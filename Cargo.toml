@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "solana-debug-validator",
+	"solana-debug-runtime",
+	"test-program",
+	"test-program-debug"
+]

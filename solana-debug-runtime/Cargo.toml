@@ -1,0 +1,18 @@
+[package]
+name = "solana-debug-runtime"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+borsh = {version = "0.9", features = ["const-generics"]}
+tokio = { version = "1", features = ["full"] }
+thiserror = "1.0"
+num-traits = "0.2"
+solana-program = "~1.13"
+blade-labs-sol-program-common = { git = "ssh://git@github.com/Blade-Labs-Corp/sol-common.git", branch = "main" }
+bytemuck = "1.9"
+lazy_static = "1.4.0"
+bpaf = { version = "0.7", features = ["derive"] }
+color-eyre = "0.5"
