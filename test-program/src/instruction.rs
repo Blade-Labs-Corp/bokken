@@ -7,7 +7,7 @@ pub enum TestProgramInstruction {
 	HelloWorld,
 	/// Accounts expected:
 	///
-	/// 0. `[writable]` test_account: This program ID,
+	/// 0. `[writable]` test_account: The test account to write to,
 	IncrementNumber {
 		amount: u64
 	},

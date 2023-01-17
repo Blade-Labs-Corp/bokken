@@ -1,0 +1,25 @@
+{
+	"name": "@blade-labs/staker",
+	"version": "0.1.0",
+	"description": "",
+	"main": "dist/index.js",
+	"module": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"author": {
+		"email": "aritz@blade.so",
+		"name": "Aritz Beobide-Cardinal"
+	},
+	"license": "UNLICENSED",
+	"scripts": {
+		"prepublish": "npm run build",
+		"build": "rm -rf dist/; tsc"
+	},
+	"dependencies": {
+		"@solana/web3.js": "^1.47.3"
+	},
+	"devDependencies": {
+		"@types/node": "^18.11.4",
+		"commander": "^9.4.1",
+		"typescript": "^4.7.4"
+	}
+}

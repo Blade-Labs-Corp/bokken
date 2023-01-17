@@ -1,4 +1,4 @@
-use std::{mem::size_of, collections::HashMap};
+use std::{mem::size_of, collections::HashMap, sync::Arc};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use bytemuck::{Zeroable, Pod};
@@ -29,11 +29,6 @@ struct RawAccountInfoHeader {
 	pub owner: Pubkey,
 	pub lamports: u64,
 	pub data_len: u64
-}
-
-extern "C" {
-	// Yep, that's it. We just statically link with whatever function is called "entrypoint"
-    fn entrypoint(input: *mut u8) -> u64;
 }
 pub struct SolanaDebugContext {
 	executed: bool,
@@ -115,13 +110,39 @@ impl SolanaDebugContext {
 			None
 		}
 	}
-	pub fn execute_sol_program(&mut self) -> u64 {
+	pub fn get_account_datas(&self) -> HashMap<Pubkey, DebugAccountData> {
+		let mut result = HashMap::new();
+		for pubkey in self.account_offsets.keys() {
+			result.insert(
+				*pubkey,
+				self.get_account_data(pubkey).expect("the value of the keys we are iterating over")
+			);
+		}
+		result
+	}
+	pub async fn execute_sol_program(&mut self) -> u64 {
 		if self.executed {
 			panic!("SolanaDebugContext should only run once")
 		}
 		self.executed = true;
-		unsafe {
-			entrypoint(self.blob.as_mut_ptr())
-		}
+
+		// This is dumb, but I couldn't quickly find a better way
+		let mut blob_clone = self.blob.clone();
+		// spawn_blocking is used cuz invoke is a blocking method
+		let handle = tokio::task::spawn_blocking(move || {
+			extern "C" {
+				// Yep, that's it. We just statically link with whatever function is called "entrypoint"
+				fn entrypoint(input: *mut u8) -> u64;
+			}
+			let return_code = unsafe {
+				entrypoint(blob_clone.as_mut_ptr())
+			};
+			(return_code, blob_clone)
+		});
+		let (return_code, modified_blob) = handle.await.unwrap();
+
+		// Ugh
+		self.blob = modified_blob;
+		return_code
 	}
 }

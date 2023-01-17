@@ -13,7 +13,7 @@ fn test_increment_func(
 ) -> Result<(), ProgramError> {
 	test_state.property1 += num;
 	test_state.property2 += num * 2;
-	msg!("Look ma, a stacktrace! {}", Backtrace::force_capture());
+	msg!("Look ma, a stacktrace!\n{}", Backtrace::force_capture());
 	Ok(())
 }
 
@@ -29,6 +29,6 @@ pub fn process_increment_number(
 	)?;
 	msg!("Old test_state: {:#?}", test_state);
 	test_increment_func(&mut test_state, number)?;
-	msg!("Old new_state: {:#?}", test_state);
+	msg!("New test_state: {:#?}", test_state);
 	Ok(())
 }

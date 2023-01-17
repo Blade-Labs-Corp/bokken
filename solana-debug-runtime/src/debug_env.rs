@@ -43,9 +43,12 @@ impl From<BorshAccountMeta> for AccountMeta {
 
 #[derive(Debug, BorshSerialize, BorshDeserialize)]
 pub enum DebugRuntimeMessage {
-	RegisterProgram(Pubkey),
-	Log(String),
+	Log {
+		nonce: u64,
+		message: String
+	},
 	Executed {
+		nonce: u64,
 		return_code: u64,
 		account_datas: HashMap<Pubkey, DebugAccountData>
 	}
@@ -55,6 +58,7 @@ pub enum DebugRuntimeMessage {
 #[derive(Debug, BorshSerialize, BorshDeserialize)]
 pub enum DebugValidatorMessage {
 	Invoke {
+		nonce: u64,
 		program_id: Pubkey,
 		instruction: Vec<u8>,
 		account_metas: Vec<BorshAccountMeta>,
