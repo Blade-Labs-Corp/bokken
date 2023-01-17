@@ -40,18 +40,21 @@ struct CommandOptions {
 	listen_port: u16
 }
 
-async fn main_but_with_autocomplete() -> Result<()> {
-	let opts = command_options().run();
+#[tokio::main]
+async fn main() -> Result<()> {
+	println!("Hello, world!");
+	color_eyre::install()?;
 
+	let opts = command_options().run();
 	let ipc_listener = UnixListener::bind(opts.socket_path)?;
 	let ledger = DebugLedger::new(
 		opts.save_path,
+		ProgramCaller::new(ipc_listener),
 		Some(DebugLedgerInitConfig {
 			initial_mint: pubkey!("2iXtA8oeZqUU5pofxK971TCEvFGfems2AcDRaZHKD2pQ"),
 			initial_mint_lamports: 10000000000000000
 		})
 	).await?;
-	let program_caller = ProgramCaller::new(ipc_listener);
 	
 	rpc_endpoint::start_endpoint(
 		match opts.listen_addr {
@@ -63,14 +66,6 @@ async fn main_but_with_autocomplete() -> Result<()> {
 			},
 		},
 		ledger,
-		program_caller,
 	).await?;
 	Ok(())
-}
-
-#[tokio::main]
-async fn main() -> Result<()> {
-	println!("Hello, world!");
-	color_eyre::install()?;
-	main_but_with_autocomplete().await
 }

@@ -9,6 +9,7 @@ use bpaf::Bpaf;
 use tokio::net::UnixStream;
 
 
+pub mod sol_syscalls;
 pub mod executor;
 pub mod debug_env;
 pub mod ipc_comm;
@@ -40,14 +41,16 @@ pub async fn debug_runtime_main() -> eyre::Result<()> {
 				program_id,
 				instruction,
 				account_metas,
-				account_datas
+				account_datas,
+				call_depth
 			} => {
 				println!("DEBUG: Got invoke request");
 				let mut context = SolanaDebugContext::new(
 					program_id,
 					instruction,
 					account_metas.into_iter().map(|v|{v.into()}).collect(),
-					account_datas
+					account_datas,
+					call_depth
 				);
 				let return_code = context.execute_sol_program().await;
 				println!("DEBUG: program invoked! return code {}", return_code);

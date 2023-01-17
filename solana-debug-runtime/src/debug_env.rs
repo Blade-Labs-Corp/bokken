@@ -62,6 +62,7 @@ pub enum DebugValidatorMessage {
 		program_id: Pubkey,
 		instruction: Vec<u8>,
 		account_metas: Vec<BorshAccountMeta>,
-		account_datas: HashMap<Pubkey, DebugAccountData>
+		account_datas: HashMap<Pubkey, DebugAccountData>,
+		call_depth: u8
 	}
 }

@@ -123,6 +123,7 @@ impl IPCCommWriteHandler {
 }
 
 // #[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct IPCComm {
 	write_handle: task::JoinHandle<()>,
 	read_handle: task::JoinHandle<()>,

@@ -34,14 +34,15 @@ pub struct SolanaDebugContext {
 	executed: bool,
 	blob: Vec<u8>,
 	account_offsets: HashMap<Pubkey, usize>,
-	program_log: Vec<String>,
+	call_depth: u8
 }
 impl SolanaDebugContext {
 	pub fn new(
 		program_id: Pubkey,
 		instruction: Vec<u8>,
 		account_metas: Vec<AccountMeta>,
-		mut account_datas: HashMap<Pubkey, DebugAccountData>
+		mut account_datas: HashMap<Pubkey, DebugAccountData>,
+		call_depth: u8,
 	) -> Self {
 		let mut blob: Vec<u8> = Vec::with_capacity(
 			account_metas.len() * 20480 + // this value is arbitrary
@@ -84,7 +85,7 @@ impl SolanaDebugContext {
 			executed: false,
 			blob,
 			account_offsets,
-			program_log: Vec::new()
+			call_depth
 		}
 	}
 	pub fn get_account_data(&self, pubkey: &Pubkey) -> Option<DebugAccountData> {

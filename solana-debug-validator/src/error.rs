@@ -1,4 +1,4 @@
-use solana_sdk::{transaction::TransactionError, sanitize::SanitizeError};
+use solana_sdk::{transaction::TransactionError, sanitize::SanitizeError, program_error::ProgramError};
 use thiserror::Error;
 use std::io;
 
@@ -25,7 +25,9 @@ pub enum DebugValidatorError {
 	#[error("Connection to program dropped while waiting for execution result")]
 	ProgramClosedConnection,
 	#[error("The program is stopping")]
-	Stopping
+	Stopping,
+	#[error("Instruction #{0}: Program returned: {1}")]
+	InstructionExecError(usize, ProgramError, Vec<String>)
 	
 }
 impl From<DebugValidatorError> for jsonrpsee::core::Error {

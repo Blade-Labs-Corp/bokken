@@ -9,23 +9,32 @@ import {TestProgramInstructionBuilder} from "./autogen/instructions";
 		const programState = new PublicKey("TheDebugab1eProgramTestState111111111111111");
 
 		const testKeypair = Keypair.fromSeed(Buffer.alloc(32, 42));
-
-		/*
-		inspect(
-			await connection.simulateTransaction(
-				new Transaction().add(
-					TestProgramInstructionBuilder.buildHelloWorldIx(programId)
+		console.log("Hello world");
+		console.log(
+			inspect(
+				await connection.simulateTransaction(
+					new Transaction().add(
+						TestProgramInstructionBuilder.buildHelloWorldIx(programId)
+					),
+					[testKeypair]
 				),
-				[testKeypair]
+				false,
+				Infinity,
+				true
 			)
-		);
-		*/
-		inspect(
-			await connection.simulateTransaction(
-				new Transaction().add(
-					TestProgramInstructionBuilder.buildIncrementNumberIx(programId, programState, 1337n)
+		)
+		console.log("Increment number");
+		console.log(
+			inspect(
+				await connection.simulateTransaction(
+					new Transaction().add(
+						TestProgramInstructionBuilder.buildIncrementNumberIx(programId, programState, 1337n)
+					),
+					[testKeypair]
 				),
-				[testKeypair]
+				false,
+				Infinity,
+				true
 			)
 		);
 	}catch(ex: any) {
