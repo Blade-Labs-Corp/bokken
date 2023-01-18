@@ -16,3 +16,4 @@ lazy_static = "1.4.0"
 bpaf = { version = "0.7", features = ["derive"] }
 color-eyre = "0.5"
 base64 = "0.13"
+itertools = "0.10"

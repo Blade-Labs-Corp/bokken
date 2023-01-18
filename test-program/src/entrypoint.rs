@@ -5,7 +5,7 @@ use solana_program::{
 	msg, program_error::ProgramError,
 };
 
-use crate::{instruction::TestProgramInstruction, processor::process_increment_number};
+use crate::{instruction::TestProgramInstruction, processor::{process_increment_number, process_recurse_then_increment_number}};
 
 blade_entrypoint!(process_instruction);
 fn process_instruction<'a>(
@@ -24,7 +24,15 @@ fn process_instruction<'a>(
 			msg!("ix: IncrementNumber");
 			process_increment_number(program_id, &mut account_info_iter, amount)?;
 		},
-   
+		TestProgramInstruction::RecurseThenIncrementNumber { call_depth, amount } => {
+			msg!("ix: RecurseThenIncrementNumber");
+			process_recurse_then_increment_number(
+				program_id,
+				&mut account_info_iter,
+				call_depth,
+				amount
+			)?;
+		}
 	}
 	Ok(())
 }

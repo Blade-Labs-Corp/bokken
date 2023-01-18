@@ -45,6 +45,25 @@ impl Default for RpcBinaryEncoding {
 		Self::Base64
 	}
 }
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct RPCBinaryEncodedString (String, RpcBinaryEncoding);
+impl RPCBinaryEncodedString {
+	pub fn from_bytes(data: &[u8], encoding: RpcBinaryEncoding) -> Self {
+		Self(
+			match &encoding {
+				RpcBinaryEncoding::Base64 => {
+					base64::encode(data)
+				},
+				RpcBinaryEncoding::Base58 => {
+					bs58::encode(data).into_string()
+				}
+			},
+			encoding
+		)
+	}
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub enum RpcCommitment {
@@ -141,7 +160,7 @@ pub struct RpcSimulateTransactionResponseValue {
 pub struct RpcSimulateTransactionResponseAccounts {
 	lamports: u64,
 	owner: String,
-	data: (String, RpcBinaryEncoding),
+	data: RPCBinaryEncodedString,
 	executable: bool,
 	rent_epoch: u64
 }
@@ -150,7 +169,7 @@ pub struct RpcSimulateTransactionResponseAccounts {
 #[serde(rename_all = "camelCase")]
 pub struct RpcSimulateTransactionResponseReturnData {
 	program_id: String,
-	data: (String, RpcBinaryEncoding)
+	data: RPCBinaryEncodedString
 }
 // end-simulateTransaction
 
@@ -228,17 +247,7 @@ impl SolanaDebuggerRpcImpl {
 								RpcSimulateTransactionResponseAccounts{
 									lamports: state.lamports,
 									owner: state.owner.to_string(),
-									data: (
-										match config.accounts.encoding {
-											RpcBinaryEncoding::Base64 => {
-												base64::encode(&state.data)
-											},
-											RpcBinaryEncoding::Base58 => {
-												bs58::encode(&state.data).into_string()
-											},
-										},
-										config.accounts.encoding
-									),
+									data: RPCBinaryEncodedString::from_bytes(&state.data, config.accounts.encoding),
 									executable: state.executable,
 									rent_epoch: state.rent_epoch,
 								}

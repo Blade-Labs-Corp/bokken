@@ -1,7 +1,7 @@
-use borsh::BorshDeserialize;
+use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{msg, program_error::ProgramError, pubkey::Pubkey};
 
-#[derive(BorshDeserialize, PartialEq, Eq, Debug)]
+#[derive(BorshDeserialize, BorshSerialize, PartialEq, Eq, Debug)]
 /// ts-autogen: program-instruction
 pub enum TestProgramInstruction {
 	HelloWorld,
@@ -9,6 +9,13 @@ pub enum TestProgramInstruction {
 	///
 	/// 0. `[writable]` test_account: The test account to write to,
 	IncrementNumber {
+		amount: u64
+	},
+	/// Accounts expected:
+	///
+	/// 0. `[writable]` test_account: The test account to write to,
+	RecurseThenIncrementNumber {
+		call_depth: u8,
 		amount: u64
 	},
 }

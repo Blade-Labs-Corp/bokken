@@ -203,6 +203,13 @@ impl IPCComm {
 		send_queue_bytes.push_back(msg_bytes);
 		Ok(())
 	}
+	pub fn blocking_send_msg<S: BorshSerialize>(&mut self, msg: S) -> Result<(), io::Error> {
+		let msg_bytes = msg.try_to_vec()?;
+		let mut send_queue_bytes = self.send_queue_bytes.blocking_lock();
+		send_queue_bytes.push_back((msg_bytes.len() as u64).to_le_bytes().to_vec());
+		send_queue_bytes.push_back(msg_bytes);
+		Ok(())
+	}
 	/// Results in None if thereare no messages in the incoming message queue
 	pub async fn recv_msg<R: BorshDeserialize>(&mut self) -> Result<Option<R>, io::Error> {
 		let mut recv_queue_bytes = self.recv_queue_bytes.lock().await;
