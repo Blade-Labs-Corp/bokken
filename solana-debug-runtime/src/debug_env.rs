@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use borsh::{BorshSerialize, BorshDeserialize};
-use solana_program::{pubkey::Pubkey, instruction::AccountMeta};
+use solana_program::{pubkey::Pubkey, instruction::AccountMeta, program_error::ProgramError};
 
-#[derive(PartialEq, Eq, Debug, Clone, BorshSerialize, BorshDeserialize)]
+#[derive(PartialEq, Eq, Debug, Clone, BorshSerialize, BorshDeserialize, Default)]
 pub struct DebugAccountData {
 	// pub pubkey: Pubkey,
 	pub lamports: u64,
@@ -11,6 +11,16 @@ pub struct DebugAccountData {
 	pub owner: Pubkey,
 	pub executable: bool,
 	pub rent_epoch: u64
+}
+impl DebugAccountData {
+	pub fn move_lamports<'a>(&'a mut self, to: &'a mut Self, amount: u64) -> Result<(), ProgramError> {
+		if self.lamports < amount {
+			return Err(ProgramError::InsufficientFunds)
+		}
+		self.lamports -= amount;
+		to.lamports += amount;
+		Ok(())
+	}
 }
 
 #[derive(Debug, Default, PartialEq, Clone, BorshSerialize, BorshDeserialize)]
@@ -51,6 +61,14 @@ pub enum DebugRuntimeMessage {
 		nonce: u64,
 		return_code: u64,
 		account_datas: HashMap<Pubkey, DebugAccountData>
+	},
+	CrossProgramInvoke {
+		nonce: u64,
+		program_id: Pubkey,
+		instruction: Vec<u8>,
+		account_metas: Vec<BorshAccountMeta>,
+		account_datas: HashMap<Pubkey, DebugAccountData>,
+		call_depth: u8
 	}
 }
 
@@ -64,5 +82,10 @@ pub enum DebugValidatorMessage {
 		account_metas: Vec<BorshAccountMeta>,
 		account_datas: HashMap<Pubkey, DebugAccountData>,
 		call_depth: u8
+	},
+	CrossProgramInvokeResult {
+		nonce: u64,
+		return_code: u64,
+		account_datas: HashMap<Pubkey, DebugAccountData>
 	}
 }

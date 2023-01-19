@@ -1,0 +1,55 @@
+{
+	// Use IntelliSense to learn about possible attributes.
+	// Hover to view descriptions of existing attributes.
+	// For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"type": "lldb",
+			"request": "launch",
+			"name": "Debug executable 'solana-debug-validator'",
+			"cargo": {
+				"args": [
+					"build",
+					"--bin=solana-debug-validator",
+					"--package=solana-debug-validator",
+					
+				],
+				"filter": {
+					"name": "solana-debug-validator",
+					"kind": "bin"
+				}
+			},
+			"args": [
+				"--socket-path",
+				"/tmp/sdv.sock",
+				"--save-path",
+				"/tmp/not-ledger"
+			],
+			"cwd": "${workspaceFolder}"
+		},
+		{
+			"type": "lldb",
+			"request": "launch",
+			"name": "Debug executable 'test-program-debug'",
+			"cargo": {
+				"args": [
+					"build",
+					"--bin=test-program-debug",
+					"--package=test-program-debug"
+				],
+				"filter": {
+					"name": "test-program-debug",
+					"kind": "bin"
+				}
+			},
+			"args": [
+				"--socket-path",
+				"/tmp/sdv.sock",
+				"--program-id",
+				"TheDebugab1eProgram111111111111111111111111"
+			],
+			"cwd": "${workspaceFolder}"
+		}
+	]
+}

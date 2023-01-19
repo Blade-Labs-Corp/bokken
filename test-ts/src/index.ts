@@ -1,13 +1,58 @@
 import {inspect} from "util";
-import {Connection, PublicKey, Keypair, Transaction} from "@solana/web3.js";
+import {Connection, PublicKey, Keypair, Transaction, SystemInstruction, SystemProgram, sendAndConfirmTransaction} from "@solana/web3.js";
+import { sizeOf } from "./autogen/serialization";
 import {TestProgramInstructionBuilder} from "./autogen/instructions";
 
 (async () => {
 	try {
 		const connection = new Connection("http://127.0.0.1:8899");
 		const programId = new PublicKey("TheDebugab1eProgram111111111111111111111111");
-		const programState = new PublicKey("TheDebugab1eProgramTestState111111111111111");
+		const testKeypair = Keypair.fromSeed(Buffer.alloc(32, 42));
+		console.log("Hello world");
 
+		const stateAccountSeed = "test123";
+
+		const programState = await PublicKey.createWithSeed(testKeypair.publicKey, stateAccountSeed, programId);
+
+		
+		console.log("Hello world");
+		console.log(
+			inspect(
+				await sendAndConfirmTransaction(
+					connection,
+					new Transaction().add(
+						SystemProgram.createAccountWithSeed({
+							basePubkey: testKeypair.publicKey,
+							fromPubkey: testKeypair.publicKey,
+							lamports: await connection.getMinimumBalanceForRentExemption(16),
+							newAccountPubkey: programState,
+							programId,
+							seed: stateAccountSeed,
+							space: 16
+						})
+					),
+					[testKeypair]
+				),
+				false,
+				Infinity,
+				true
+			)
+		);
+		console.log(
+			inspect(
+				await sendAndConfirmTransaction(
+					connection,
+					new Transaction().add(
+						TestProgramInstructionBuilder.buildIncrementNumberIx(programId, programState, 1337n)
+					),
+					[testKeypair]
+				),
+				false,
+				Infinity,
+				true
+			)
+		)
+		/*
 		const testKeypair = Keypair.fromSeed(Buffer.alloc(32, 42));
 		console.log("Hello world");
 		console.log(
@@ -37,6 +82,7 @@ import {TestProgramInstructionBuilder} from "./autogen/instructions";
 				true
 			)
 		);
+		*/
 	}catch(ex: any) {
 		if (Array.isArray(ex.logs)) {
 			console.error(ex.name, ex.message);

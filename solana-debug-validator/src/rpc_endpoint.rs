@@ -18,160 +18,30 @@ use jsonrpsee::types::Params;
 use crate::debug_ledger::{DebugLedger, DebugLedgerInstruction, DebugLedgerAccountReturnChoice};
 use crate::error::DebugValidatorError;
 use crate::program_caller::ProgramCaller;
+use crate::rpc_endpoint_structs::{RpcGetLatestBlockhashRequest, RpcVersionResponse, RpcGetLatestBlockhashResponse, RpcGetLatestBlockhashResponseValue, RpcResponseContext, RpcSimulateTransactionRequest, RpcSimulateTransactionResponse, RpcBinaryEncoding, RpcSimulateTransactionResponseValue, RpcSimulateTransactionResponseAccounts, RPCBinaryEncodedString, RpcGetAccountInfoRequest, RpcGetAccountInfoResponse, RpcGetBalanceResponse, RpcGetBalanceRequest, RpcGetAccountInfoResponseValue, RpcGenericConfigRequest, RpcSendTransactionRequest};
 
 
 // Generate both server and client implementations, prepend all the methods with `foo_` prefix.
 #[rpc(server)]
 pub trait SolanaDebuggerRpc {
+	#[method(name = "getAccountInfo")]
+	async fn get_account_info(&self, pubkey: Pubkey, config: Option<RpcGetAccountInfoRequest>) -> RpcResult<RpcGetAccountInfoResponse>;
+	#[method(name = "getBalance")]
+	async fn get_balance(&self, pubkey: Pubkey, config: Option<RpcGetBalanceRequest>) -> RpcResult<RpcGetBalanceResponse>;
+	#[method(name = "getBlockHeight")]
+	async fn get_block_height(&self, _config: Option<RpcGetBalanceRequest>) -> RpcResult<u64>;
 	#[method(name = "getLatestBlockhash")]
 	async fn get_latest_blockhash(&self, config: Option<RpcGetLatestBlockhashRequest>) -> RpcResult<RpcGetLatestBlockhashResponse>;
+	#[method(name = "getMinimumBalanceForRentExemption")]
+	async fn get_min_balance_for_rent_exemption(&self, size: u64, config: Option<RpcGenericConfigRequest>) -> RpcResult<u64>;
+
 	#[method(name = "getVersion")]
 	fn get_version(&self) -> RpcResult<RpcVersionResponse>;
+	#[method(name = "sendTransaction")]
+	async fn send_transaction(&self, tx_data: String, config: Option<RpcSendTransactionRequest>) -> RpcResult<String>;
 	#[method(name = "simulateTransaction")]
 	async fn simulate_transaction(&self, tx_data: String, config: Option<RpcSimulateTransactionRequest>) -> RpcResult<RpcSimulateTransactionResponse>;
 }
-
-// start-common
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Copy)]
-#[serde(rename_all = "camelCase")]
-pub enum RpcBinaryEncoding {
-	Base64,
-	Base58,
-	// #[serde(rename = "jsonParsed")]
-	// JsonParsed
-}
-impl Default for RpcBinaryEncoding {
-	fn default() -> Self {
-		Self::Base64
-	}
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-pub struct RPCBinaryEncodedString (String, RpcBinaryEncoding);
-impl RPCBinaryEncodedString {
-	pub fn from_bytes(data: &[u8], encoding: RpcBinaryEncoding) -> Self {
-		Self(
-			match &encoding {
-				RpcBinaryEncoding::Base64 => {
-					base64::encode(data)
-				},
-				RpcBinaryEncoding::Base58 => {
-					bs58::encode(data).into_string()
-				}
-			},
-			encoding
-		)
-	}
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub enum RpcCommitment {
-	Finalized,
-	Confirmed,
-	Processed
-}
-impl Default for RpcCommitment {
-	fn default() -> Self {
-		Self::Finalized
-	}
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Default, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct RpcResponseContext {
-	slot: u64
-}
-// end-common
-	
-// start-getVersion
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
-#[serde(rename_all = "kebab-case")]
-pub struct RpcVersionResponse {
-	solana_core: String,
-	feature_set: u32
-}
-// end-getVersion
-
-// start-getLatestBlockhash
-#[derive(serde::Serialize, serde::Deserialize, Default, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct RpcGetLatestBlockhashRequest {
-	commitment: RpcCommitment,
-}
-#[derive(serde::Serialize, serde::Deserialize, Default, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct RpcGetLatestBlockhashResponse {
-	context: RpcResponseContext,
-	value: RpcGetLatestBlockhashResponseValue
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Default, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct RpcGetLatestBlockhashResponseValue {
-	blockhash: String,
-	last_valid_block_height: u64
-}
-
-// end-getLatestBlockHash
-
-// start-simulateTransaction
-#[derive(serde::Serialize, serde::Deserialize, Default, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct RpcSimulateTransactionRequest {
-	#[serde(default)]
-	sig_verify: bool,
-	#[serde(default)]
-	commitment: RpcCommitment,
-	encoding: Option<RpcBinaryEncoding>,
-	#[serde(default)]
-	replace_recent_blockhash: bool,
-	#[serde(default)]
-	accounts: RpcSimulateTransactionRequestAccounts,
-	#[serde(default)]
-	min_context_slot: u64
-}
-#[derive(serde::Serialize, serde::Deserialize, Default, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct RpcSimulateTransactionRequestAccounts {
-	encoding: RpcBinaryEncoding,
-	addresses: Vec<Pubkey>
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct RpcSimulateTransactionResponse {
-	context: RpcResponseContext,
-	value: RpcSimulateTransactionResponseValue
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct RpcSimulateTransactionResponseValue {
-	err: Option<solana_sdk::transaction::TransactionError>,
-	logs: Option<Vec<String>>,
-	accounts: Option<Vec<RpcSimulateTransactionResponseAccounts>>,
-	units_consumed: Option<u64>,
-	return_data: Option<RpcSimulateTransactionResponseReturnData>
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct RpcSimulateTransactionResponseAccounts {
-	lamports: u64,
-	owner: String,
-	data: RPCBinaryEncodedString,
-	executable: bool,
-	rent_epoch: u64
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct RpcSimulateTransactionResponseReturnData {
-	program_id: String,
-	data: RPCBinaryEncodedString
-}
-// end-simulateTransaction
 
 pub struct SolanaDebuggerRpcImpl {
 	ledger: Arc<Mutex<DebugLedger>>
@@ -181,6 +51,89 @@ impl SolanaDebuggerRpcImpl {
 		Self {
 			ledger: Arc::new(Mutex::new(ledger))
 		}
+	}
+	async fn _get_account_info(&self, pubkey: Pubkey, config: Option<RpcGetAccountInfoRequest>) -> Result<RpcGetAccountInfoResponse, DebugValidatorError> {
+		let config = config.unwrap_or_default();
+		let ledger = self.ledger.lock().await;
+		let data = ledger.read_account(&pubkey).await?;
+		Ok(
+			RpcGetAccountInfoResponse {
+				context: RpcResponseContext { slot: ledger.slot() },
+				value: if data.lamports == 0 {
+					None
+				}else{
+					Some(
+						RpcGetAccountInfoResponseValue {
+							lamports: data.lamports,
+							owner: data.owner,
+							data: RPCBinaryEncodedString::from_bytes(&data.data, config.encoding),
+							executable: data.executable,
+							rent_epoch: data.rent_epoch,
+						}
+					)
+				}
+			}
+		)
+	}
+	async fn _get_balance(&self, pubkey: Pubkey, config: Option<RpcGetBalanceRequest>) -> Result<RpcGetBalanceResponse, DebugValidatorError> {
+		let config = config.unwrap_or_default();
+		let ledger = self.ledger.lock().await;
+		Ok(
+			RpcGetBalanceResponse {
+				context: RpcResponseContext { slot: ledger.slot() },
+				value: ledger.read_account(&pubkey).await?.lamports
+			}
+		)
+	}
+	async fn _send_transaction(
+		&self,
+		tx_data: String,
+		config: Option<RpcSendTransactionRequest>
+	) -> Result<String, DebugValidatorError> {
+		let config = config.unwrap_or_default();
+		// tx encoding has a default encoding type compared to everything else, woohoo!
+		let tx: Transaction = bincode::deserialize(&match config.encoding.unwrap_or(RpcBinaryEncoding::Base58) {
+			RpcBinaryEncoding::Base58 => {
+				bs58::decode(tx_data).into_vec()?
+			}
+			RpcBinaryEncoding::Base64 => {
+				base64::decode(tx_data)?
+			}
+		})?;
+
+		// Verify the message isn't garbage
+		tx.sanitize()?;
+		tx.verify()?;
+
+		let account_pubkeys = &tx.message.account_keys;
+
+		let mut ledger = self.ledger.lock().await;
+		let ixs = tx.message.instructions.iter().map(|ix| {
+			// Alright to directly index these since the message was sanitized earlier
+			let program_id = account_pubkeys[ix.program_id_index as usize];
+			// ChatGPT Assistant told me to do it this way
+			let account_metas = ix.accounts.iter().map(|account_index|{
+				// tx.message.header.
+				BorshAccountMeta {
+					pubkey: account_pubkeys[*account_index as usize],
+					is_signer: tx.message.is_signer(*account_index as usize),
+					is_writable: tx.message.is_writable(*account_index as usize)
+				}
+
+			}).collect::<Vec<BorshAccountMeta>>();
+			DebugLedgerInstruction {
+				program_id,
+				account_metas,
+				data: ix.data.clone()
+			}
+		}).collect();
+
+		let _ = ledger.execute_instructions(
+			ixs,
+			DebugLedgerAccountReturnChoice::None,
+			true
+		).await?;
+		Ok(bs58::encode(tx.signatures[0]).into_string())
 	}
 	async fn _simulate_transaction(
 		&self,
@@ -233,7 +186,8 @@ impl SolanaDebuggerRpcImpl {
 
 		match ledger.execute_instructions(
 			ixs,
-			DebugLedgerAccountReturnChoice::Only(config.accounts.addresses.clone())
+			DebugLedgerAccountReturnChoice::Only(config.accounts.addresses.clone()),
+			false
 		).await {
 			Ok((states, logs)) => {
 				Ok(
@@ -306,6 +260,15 @@ impl SolanaDebuggerRpcImpl {
 // Note that the trait name we use is `MyRpcServer`, not `MyRpc`!
 #[async_trait]
 impl SolanaDebuggerRpcServer for SolanaDebuggerRpcImpl {
+	async fn get_account_info(&self, pubkey: Pubkey, config: Option<RpcGetAccountInfoRequest>) -> RpcResult<RpcGetAccountInfoResponse> {
+		Ok(self._get_account_info(pubkey, config).await?)
+	}
+	async fn get_balance(&self, pubkey: Pubkey, config: Option<RpcGetBalanceRequest>) -> RpcResult<RpcGetBalanceResponse> {
+		Ok(self._get_balance(pubkey, config).await?)
+	}
+	async fn get_min_balance_for_rent_exemption(&self, size: u64, config: Option<RpcGenericConfigRequest>) -> RpcResult<u64> {
+		Ok(self.ledger.lock().await.calc_min_balance_for_rent_exemption(size))
+	}
 	async fn get_latest_blockhash(&self, _config: Option<RpcGetLatestBlockhashRequest>) -> RpcResult<RpcGetLatestBlockhashResponse> {
 		let ledger = self.ledger.lock().await;
 		Ok(
@@ -320,6 +283,9 @@ impl SolanaDebuggerRpcServer for SolanaDebuggerRpcImpl {
 			}
 		)
 	}
+	async fn get_block_height(&self, _config: Option<RpcGetBalanceRequest>) -> RpcResult<u64> {
+		Ok(self.ledger.lock().await.slot())
+	}
 	fn get_version(&self) -> RpcResult<RpcVersionResponse> {
 		Ok(
 			RpcVersionResponse {
@@ -328,7 +294,9 @@ impl SolanaDebuggerRpcServer for SolanaDebuggerRpcImpl {
 			}
 		)
 	}
-	
+	async fn send_transaction(&self, tx_data: String, config: Option<RpcSendTransactionRequest>) -> RpcResult<String> {
+		Ok(self._send_transaction(tx_data, config).await?)
+	}
 	async fn simulate_transaction(
 		&self,
 		tx_data: String,

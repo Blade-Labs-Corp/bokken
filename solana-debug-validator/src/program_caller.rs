@@ -1,23 +1,38 @@
 
 use std::{sync::{atomic::{AtomicU64, AtomicBool, Ordering}, Arc}, collections::HashMap, time::Duration};
+use async_recursion::async_recursion;
 use color_eyre::eyre;
 use solana_debug_runtime::{ipc_comm::IPCComm, debug_env::{DebugValidatorMessage, DebugRuntimeMessage, DebugAccountData, BorshAccountMeta}};
-use solana_sdk::{pubkey::Pubkey, transaction::TransactionError};
+use solana_sdk::{pubkey::Pubkey, transaction::TransactionError, system_program};
 use tokio::{net::UnixListener, task, sync::{Mutex, watch}, time::sleep};
 
-use crate::error::DebugValidatorError;
-
+use crate::{error::DebugValidatorError, native_program_stubs::{NativeProgramStub, system_program::DebugSystemProgram}};
+#[derive(Debug)]
+enum ProgramCallerExecStatus {
+	Executed {
+		return_code: u64,
+		account_datas: HashMap<Pubkey, DebugAccountData>
+	},
+	CPI {
+		program_id: Pubkey,
+		instruction: Vec<u8>,
+		account_metas: Vec<BorshAccountMeta>,
+		account_datas: HashMap<Pubkey, DebugAccountData>,
+		call_depth: u8
+	}
+}
 
 static COMM_NONCE: AtomicU64 = AtomicU64::new(0);
 #[derive(Debug)]
 pub struct ProgramCaller {
+	native_programs: HashMap<Pubkey, Box<dyn NativeProgramStub>>,
 	listener_handle: task::JoinHandle<eyre::Result<()>>,
 	recieve_handle: task::JoinHandle<eyre::Result<()>>,
 	should_stop: Arc<AtomicBool>,
 	comms: Arc<Mutex<HashMap<Pubkey, IPCComm>>>,
 	exec_notif: watch::Receiver<usize>,
 	exec_logs: Arc<Mutex<HashMap<u64, Vec<String>>>>,
-	exec_results: Arc<Mutex<HashMap<u64, (u64, HashMap<Pubkey, DebugAccountData>)>>>
+	exec_results: Arc<Mutex<HashMap<u64, ProgramCallerExecStatus>>>
 }
 
 impl ProgramCaller {
@@ -71,7 +86,34 @@ impl ProgramCaller {
 								account_datas
 							} => {
 								let mut exec_results = exec_results_mutex_clone.lock().await;
-								exec_results.insert(nonce, (return_code, account_datas));
+								exec_results.insert(
+									nonce,
+									ProgramCallerExecStatus::Executed {
+										return_code,
+										account_datas 
+									}
+								);
+								stuff_executed = true;
+							},
+        					DebugRuntimeMessage::CrossProgramInvoke {
+								nonce,
+								program_id,
+								instruction,
+								account_metas,
+								account_datas,
+								call_depth
+							} => {
+								let mut exec_results = exec_results_mutex_clone.lock().await;
+								exec_results.insert(
+									nonce,
+									ProgramCallerExecStatus::CPI {
+										program_id,
+										instruction,
+										account_metas,
+										account_datas,
+										call_depth 
+									}
+								);
 								stuff_executed = true;
 							},
 						}
@@ -88,7 +130,15 @@ impl ProgramCaller {
 			}
 			Ok(())
 		});
+		
+		let mut native_programs = HashMap::new();
+		native_programs.insert(
+			system_program::id(),
+			Box::new(DebugSystemProgram::new()) as Box<dyn NativeProgramStub>
+		);
+
 		Self {
+			native_programs,
 			listener_handle,
 			recieve_handle,
 			should_stop,
@@ -102,8 +152,29 @@ impl ProgramCaller {
 		&self,
 		program_id: &Pubkey
 	) -> bool {
-		self.comms.lock().await.contains_key(program_id)
+		self.native_programs.contains_key(program_id) || self.comms.lock().await.contains_key(program_id)
 	}
+	async fn wait_for_exec_status(
+		&mut self,
+		nonce: u64
+	) -> Result<ProgramCallerExecStatus, DebugValidatorError> {
+		loop {
+			if self.should_stop.load(Ordering::Relaxed) {
+				return Err(DebugValidatorError::Stopping);
+			}
+			{
+				let mut exec_results = self.exec_results.lock().await;
+				
+				if let Some(status) = exec_results.remove(&nonce) {
+					return Ok(status);
+				}
+				// exec_results gets dropped and unlocked
+			}
+			self.exec_notif.changed().await
+				.map_err(|_|{DebugValidatorError::ProgramClosedConnection})?;
+		}
+	}
+	#[async_recursion]
 	pub async fn call_program(
 		&mut self,
 		program_id: Pubkey,
@@ -112,6 +183,19 @@ impl ProgramCaller {
 		account_datas: HashMap<Pubkey, DebugAccountData>,
 		call_depth: u8,
 	) -> Result<(u64, Vec<String>, HashMap<Pubkey, DebugAccountData>), DebugValidatorError> {
+		// Hashmap here?
+		if let Some(native_program) = self.native_programs.get_mut(&program_id) {
+			let mut account_datas = account_datas;
+			native_program.clear_logs();
+			match native_program.exec(instruction, account_metas, &mut account_datas) 	{
+				Ok(_) => {
+					return Ok((0, native_program.logs().clone(), account_datas));
+				},
+				Err(err) => {
+					return Ok((err.into(), native_program.logs().clone(), account_datas));
+				},
+			}
+		}
 		let nonce = COMM_NONCE.fetch_add(1, Ordering::Relaxed);
 		{
 			let mut comms = self.comms.lock().await;
@@ -135,19 +219,47 @@ impl ProgramCaller {
 			if self.should_stop.load(Ordering::Relaxed) {
 				return Err(DebugValidatorError::Stopping);
 			}
-			{
-				let mut exec_results = self.exec_results.lock().await;
-				if let Some((return_code, return_accounts)) = exec_results.remove(&nonce) {
+			match self.wait_for_exec_status(nonce).await? {
+				ProgramCallerExecStatus::Executed {
+					return_code,
+					account_datas
+				} => {
 					let mut exec_logs = self.exec_logs.lock().await;
-					println!("TODO: Make sure lamports didn't get magically created or vanish");
-					println!("TODO: Also make sure that the program only edited accounts that it has access to edit");
-					println!("TODO: Maybe this could be done on the child process? (cuz CPI)");
-					return Ok((return_code, exec_logs.remove(&nonce).unwrap_or_default(), return_accounts));
-				}
-				// exec_results gets dropped and unlocked
+						println!("TODO: Make sure lamports didn't get magically created or vanish");
+						println!("TODO: Also make sure that the program only edited accounts that it has access to edit");
+						println!("TODO: Maybe this could be done on the child process? (cuz CPI)");
+						return Ok((return_code, exec_logs.remove(&nonce).unwrap_or_default(), account_datas));
+				},
+				ProgramCallerExecStatus::CPI {
+					program_id: sub_program_id,
+					instruction: sub_instruction,
+					account_metas: sub_account_metas,
+					account_datas: sub_account_datas,
+					call_depth: sub_call_depth
+				} => {
+					let (sub_return_code, sub_logs, new_account_datas) = self.call_program(
+						sub_program_id,
+						sub_instruction,
+						sub_account_metas,
+						sub_account_datas,
+						sub_call_depth + 1
+					).await?;
+					let mut exec_logs = self.exec_logs.lock().await;
+					if let Some(exec_log) = exec_logs.get_mut(&nonce) {
+						exec_log.extend(sub_logs);
+					}
+					let mut comms = self.comms.lock().await;
+					comms.get_mut(&program_id)
+						.ok_or(DebugValidatorError::TransactionError(TransactionError::AccountNotFound))?
+						.send_msg(
+							DebugValidatorMessage::CrossProgramInvokeResult {
+								nonce,
+								return_code: sub_return_code,
+								account_datas: new_account_datas
+							}
+						).await?;
+				},
 			}
-			self.exec_notif.changed().await
-				.map_err(|_|{DebugValidatorError::ProgramClosedConnection})?;
 		}
 	}
 	pub fn stop(&self) {

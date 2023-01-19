@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::{Arc, atomic::{AtomicBool, Ordering}}, collections::HashSet};
+use std::{path::PathBuf, sync::{Arc, atomic::{AtomicBool, Ordering}}, collections::HashSet, thread::JoinHandle};
 
 use color_eyre::eyre;
 use debug_env::{DebugValidatorMessage, DebugRuntimeMessage};
@@ -7,9 +7,7 @@ use ipc_comm::IPCComm;
 use sol_syscalls::{DebugValidatorSyscalls, DebugValidatorSyscallMsg};
 use solana_program::{pubkey::Pubkey, program_stubs::set_syscall_stubs};
 use bpaf::Bpaf;
-use tokio::{net::UnixStream, sync::{Mutex, mpsc}};
-
-use crate::sol_syscalls::DebugValidatorSyscallContext;
+use tokio::{net::UnixStream, sync::{Mutex, mpsc}, task, join};
 
 
 pub mod sol_syscalls;
@@ -31,32 +29,11 @@ struct CommandOptions {
 	program_id: Pubkey,
 }
 
-pub async fn debug_runtime_main() -> eyre::Result<()> {
-	let opts = command_options().run();
-	let comm = Arc::new(Mutex::new(IPCComm::new(UnixStream::connect(opts.socket_path).await?)));
-	{
-		comm.lock().await.send_msg(opts.program_id).await?;
-	}
-	let (syscall_sender, syscall_receiver) = mpsc::channel::<DebugValidatorSyscallMsg>(1);
-	let syscall_mgr = Box::new(DebugValidatorSyscalls::new(
-		comm.clone(),
-		opts.program_id,
-		syscall_receiver
-	));
-	set_syscall_stubs(syscall_mgr);
-
-	
-	println!("DEBUG: debug_runtime_main: sent program id");
-	// TODO: Listen for signals and exit gracefully
-	loop {
-		let msg = {
-			let mut comm = comm.lock().await;
-			let msg = comm.recv_msg::<DebugValidatorMessage>().await?;
-			if msg.is_none() {
-				continue;
-			}
-			msg.unwrap()
-		};
+async fn ipc_read_loop(
+	comm: Arc<Mutex<IPCComm>>,
+	syscall_sender: mpsc::Sender<DebugValidatorSyscallMsg>
+) -> eyre::Result<()> {
+	while let Some(msg) = comm.lock().await.until_recv_msg::<DebugValidatorMessage>().await? {
 		match msg {
 			DebugValidatorMessage::Invoke {
 				nonce,
@@ -67,6 +44,8 @@ pub async fn debug_runtime_main() -> eyre::Result<()> {
 				call_depth
 			} => {
 				println!("DEBUG: Got invoke request");
+				todo!();
+				/* 
 				syscall_sender.send(
 					DebugValidatorSyscallMsg::PushContext{ ctx: DebugValidatorSyscallContext {
 						nonce,
@@ -112,8 +91,49 @@ pub async fn debug_runtime_main() -> eyre::Result<()> {
 						account_datas: context.get_account_datas()
 					}).await?;
 				}
+				*/
+			},
+   			DebugValidatorMessage::CrossProgramInvokeResult {
+				nonce,
+				return_code,
+				account_datas
+			} => {
+				todo!()
 			},
 		}
+	}
+	Ok(())
+}
+
+pub async fn debug_runtime_main() -> eyre::Result<()> {
+	let opts = command_options().run();
+	let comm = Arc::new(Mutex::new(IPCComm::new(UnixStream::connect(opts.socket_path).await?)));
+	{
+		comm.lock().await.send_msg(opts.program_id).await?;
+	}
+	let (syscall_sender, syscall_receiver) = mpsc::channel::<DebugValidatorSyscallMsg>(1);
+	let syscall_mgr = Box::new(DebugValidatorSyscalls::new(
+		comm.clone(),
+		opts.program_id,
+		syscall_receiver
+	));
+	set_syscall_stubs(syscall_mgr);
+	println!("DEBUG: debug_runtime_main: sent program id");
+
+	// TODO: Listen for signals and exit gracefully
+	
+
+	
+	loop {
+		let msg = {
+			let mut comm = comm.lock().await;
+			let msg = comm.recv_msg::<DebugValidatorMessage>().await?;
+			if msg.is_none() {
+				continue;
+			}
+			msg.unwrap()
+		};
+		
 	}
 	// Ok(())
 }

@@ -15,7 +15,9 @@ use tokio::task::JoinHandle;
 
 mod error;
 mod debug_ledger;
+mod rpc_endpoint_structs;
 mod rpc_endpoint;
+mod native_program_stubs;
 mod program_caller;
 
 use crate::debug_ledger::DebugLedger;
