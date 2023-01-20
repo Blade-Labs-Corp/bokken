@@ -1,10 +1,10 @@
-use std::{sync::{Arc, atomic::{AtomicBool, Ordering}}, collections::HashSet, thread};
+use std::{sync::{Arc, atomic::{AtomicBool, Ordering}}, collections::{HashSet, HashMap}, thread};
 
 use solana_program::{program_stubs::SyscallStubs, program_error::{UNSUPPORTED_SYSVAR, ProgramError}, entrypoint::ProgramResult, pubkey::Pubkey, instruction::Instruction, account_info::AccountInfo};
-use tokio::{sync::{Mutex, mpsc}, task};
+use tokio::{sync::{Mutex, mpsc, RwLock}, task};
 use itertools::Itertools;
 
-use crate::{ipc_comm::IPCComm, debug_env::DebugRuntimeMessage, executor::{SolanaDebugContext, execute_sol_program_thread}};
+use crate::{ipc_comm::IPCComm, debug_env::{DebugRuntimeMessage, DebugAccountData}, executor::{SolanaDebugContext, execute_sol_program_thread, SolanaAccountsBlob}};
 
 #[derive(Debug)]
 pub(crate) enum DebugValidatorSyscallMsg {
@@ -21,6 +21,7 @@ pub(crate) enum DebugValidatorSyscallMsg {
 pub(crate) struct DebugValidatorSyscalls {
 	ipc: Arc<Mutex<IPCComm>>,
 	program_id: Pubkey,
+	invoke_result_senders: Arc<Mutex<HashMap<u64, mpsc::Sender<(u64, HashMap<Pubkey, DebugAccountData>)>>>>,
 	// Using a mutex is just the easiest way to make the property mutable while being Send + Sync that I know of
 	return_data: Arc<Mutex<Option<(Pubkey, Vec<u8>)>>>,
 	contexts: Arc<Mutex<Vec<SolanaDebugContext>>>,
@@ -29,6 +30,7 @@ impl DebugValidatorSyscalls {
 	pub fn new(
 		ipc: Arc<Mutex<IPCComm>>,
 		program_id: Pubkey,
+		invoke_result_senders: Arc<Mutex<HashMap<u64, mpsc::Sender<(u64, HashMap<Pubkey, DebugAccountData>)>>>>,
 		mut msg_receiver: mpsc::Receiver<DebugValidatorSyscallMsg>
 	) -> Self {
 		let contexts= Arc::new(Mutex::new(Vec::new()));
@@ -66,6 +68,7 @@ impl DebugValidatorSyscalls {
 		Self {
 			ipc,
 			program_id,
+			invoke_result_senders,
 			return_data: Arc::new(Mutex::new(None)),
 			contexts
 		}
@@ -75,6 +78,13 @@ impl DebugValidatorSyscalls {
 	}
 	fn nonce(&self) -> u64 {
 		self.contexts.blocking_lock().last().expect("not be empty during program execution").nonce()
+	}
+	fn account_data_lock(&self) -> Arc<RwLock<SolanaAccountsBlob>> {
+		self.contexts.blocking_lock()
+			.last()
+			.expect("not be empty during program execution")
+			.blob
+			.clone()
 	}
 	fn is_valid_signer(&self, pubkey: &Pubkey) -> bool {
 		self.contexts
@@ -119,25 +129,70 @@ impl SyscallStubs for DebugValidatorSyscalls {
 				Pubkey::create_program_address(signing_seed, &self.program_id)?
 			);
 		}
-		for (i, meta) in instruction.accounts.iter().enumerate() {
-			if *account_infos[i].key != meta.pubkey {
-				self.sol_log("Invoke: Accoune meta doesn't match account info");
-				return Err(ProgramError::InvalidAccountData);
+		let mut outgoing_account_datas = HashMap::new();
+		let ctx_account_data_lock = self.account_data_lock();
+		{
+			let ctx_acocunt_datas = ctx_account_data_lock.blocking_read();
+			for (i, meta) in instruction.accounts.iter().enumerate() {
+				if *account_infos[i].key != meta.pubkey {
+					self.sol_log("Invoke: Accoune meta doesn't match account info");
+					return Err(ProgramError::InvalidAccountData);
+				}
+				if meta.is_writable && !self.is_valid_writable(&meta.pubkey) {
+					// TODO: Find out what error should be returned, or if this is even needed
+					self.sol_log("Invoke: Cannot instruction requres an non-writable account to be writable");
+					return Err(ProgramError::Custom(0));
+				}
+				if meta.is_signer && !self.is_valid_signer(&meta.pubkey) && !just_signed.contains(&meta.pubkey) {
+					self.sol_log(format!(
+						"Invoke: Account {} needs to be signed, but it isn't and doesn't match any given PDA seeds",
+						meta.pubkey
+					).as_str());
+					return Err(ProgramError::MissingRequiredSignature);
+				}
+				outgoing_account_datas.insert(
+					meta.pubkey.clone(),
+					ctx_acocunt_datas.get_account_data(&meta.pubkey).expect("To have the account info we were just passed")
+				);
 			}
-			if meta.is_writable && !self.is_valid_writable(&meta.pubkey) {
-				// TODO: Find out what error should be returned, or if this is even needed
-				self.sol_log("Invoke: Cannot instruction requres an non-writable account to be writable");
-				return Err(ProgramError::Custom(0));
-			}
-			if meta.is_signer && !self.is_valid_signer(&meta.pubkey) && !just_signed.contains(&meta.pubkey) {
-				self.sol_log(format!(
-					"Invoke: Account {} needs to be signed, but it isn't and doesn't match any given PDA seeds",
-					meta.pubkey
-				).as_str());
-				return Err(ProgramError::MissingRequiredSignature);
-			}
+			// ctx_acocunt_datas drops unlocks
 		}
-		panic!("TODO: sol_invoke_signed");
+		
+		let mut receiver = {
+			let (sender, receiver) = mpsc::channel(1);
+			self.invoke_result_senders.blocking_lock().insert(self.nonce(), sender);
+			receiver
+			// self.invoke_result_senders unlocks
+		};
+		{
+			
+			
+			self.ipc.blocking_lock().blocking_send_msg(
+				DebugRuntimeMessage::CrossProgramInvoke {
+					nonce: self.nonce(),
+					program_id: self.program_id,
+					instruction: instruction.data.clone(),
+					account_metas: instruction.accounts.iter().map(|v|{v.into()}).collect(),
+					account_datas: HashMap::new(),
+					call_depth: self.stack_height()
+				}
+			).expect("encoding to not fail");
+			// self.ipc unlocks
+		}
+		let (return_code, account_datas) = receiver.blocking_recv().expect("get a response from CPI");
+		{
+			let mut ctx_acocunt_datas = ctx_account_data_lock.blocking_write();
+			// We update these before potentially panicking for extra debugging flexibility
+			for (pubkey, account_data) in account_datas.into_iter() {
+				ctx_acocunt_datas.set_account_data(&pubkey, account_data)?;
+			}
+			// ctx_acocunt_datas drops and unlocks
+		}
+		if return_code != 0 {
+			// SOL programs cannot catch a failed CPI, don't let 'em!
+			panic!("CPI failed wirth return code {}", return_code);
+		}
+		Ok(())
 	}
 	fn sol_get_clock_sysvar(&self, _var_addr: *mut u8) -> u64 {
 		UNSUPPORTED_SYSVAR

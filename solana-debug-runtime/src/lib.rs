@@ -1,7 +1,7 @@
-use std::{path::PathBuf, sync::{Arc, atomic::{AtomicBool, Ordering}}, collections::HashSet, thread::JoinHandle};
+use std::{path::PathBuf, sync::{Arc, atomic::{AtomicBool, Ordering}}, collections::{HashSet, HashMap}, thread::JoinHandle};
 
 use color_eyre::eyre;
-use debug_env::{DebugValidatorMessage, DebugRuntimeMessage};
+use debug_env::{DebugValidatorMessage, DebugRuntimeMessage, DebugAccountData};
 use executor::SolanaDebugContext;
 use ipc_comm::IPCComm;
 use sol_syscalls::{DebugValidatorSyscalls, DebugValidatorSyscallMsg};
@@ -31,7 +31,8 @@ struct CommandOptions {
 
 async fn ipc_read_loop(
 	comm: Arc<Mutex<IPCComm>>,
-	syscall_sender: mpsc::Sender<DebugValidatorSyscallMsg>
+	syscall_sender: mpsc::Sender<DebugValidatorSyscallMsg>,
+	invoke_result_senders: Arc<Mutex<HashMap<u64, mpsc::Sender<(u64, HashMap<Pubkey, DebugAccountData>)>>>>
 ) -> eyre::Result<()> {
 	while let Some(msg) = comm.lock().await.until_recv_msg::<DebugValidatorMessage>().await? {
 		match msg {
@@ -43,62 +44,29 @@ async fn ipc_read_loop(
 				account_datas,
 				call_depth
 			} => {
-				println!("DEBUG: Got invoke request");
-				todo!();
-				/* 
-				syscall_sender.send(
-					DebugValidatorSyscallMsg::PushContext{ ctx: DebugValidatorSyscallContext {
-						nonce,
-						stack_height: call_depth,
-						valid_writables: {
-							let mut pubkeys = HashSet::new();
-							for meta in account_metas.iter() {
-								if meta.is_signer {
-									pubkeys.insert(meta.pubkey.clone());
-								}
-							}
-							pubkeys
-						},
-						valid_signers: {
-							let mut pubkeys = HashSet::new();
-							for meta in account_metas.iter() {
-								if meta.is_signer {
-									pubkeys.insert(meta.pubkey.clone());
-								}
-							}
-							pubkeys
-						},
-					}}
-				).await?;
-				let mut context = SolanaDebugContext::new(
+				let context = SolanaDebugContext::new(
 					program_id,
 					instruction,
 					account_metas.into_iter().map(|v|{v.into()}).collect(),
 					account_datas,
+					nonce,
 					call_depth
 				);
-				// TODO: Do not await this
-				let return_code = context.execute_sol_program().await;
 				syscall_sender.send(
-					DebugValidatorSyscallMsg::PopContext
+					DebugValidatorSyscallMsg::PushContext{
+						ctx: context,
+						msg_sender_clone: syscall_sender.clone()
+					}
 				).await?;
-				println!("DEBUG: program invoked! return code {}", return_code);
-				{
-					let mut comm = comm.lock().await;
-					comm.send_msg(DebugRuntimeMessage::Executed {
-						nonce,
-						return_code,
-						account_datas: context.get_account_datas()
-					}).await?;
-				}
-				*/
 			},
    			DebugValidatorMessage::CrossProgramInvokeResult {
 				nonce,
 				return_code,
 				account_datas
 			} => {
-				todo!()
+				if let Some(sender) = invoke_result_senders.lock().await.remove(&nonce) {
+					sender.send((return_code, account_datas)).await?;
+				}
 			},
 		}
 	}
@@ -112,30 +80,19 @@ pub async fn debug_runtime_main() -> eyre::Result<()> {
 		comm.lock().await.send_msg(opts.program_id).await?;
 	}
 	let (syscall_sender, syscall_receiver) = mpsc::channel::<DebugValidatorSyscallMsg>(1);
+	let invoke_result_senders = Arc::new(Mutex::new(HashMap::new()));
 	let syscall_mgr = Box::new(DebugValidatorSyscalls::new(
 		comm.clone(),
 		opts.program_id,
+		invoke_result_senders.clone(),
 		syscall_receiver
 	));
 	set_syscall_stubs(syscall_mgr);
 	println!("DEBUG: debug_runtime_main: sent program id");
 
 	// TODO: Listen for signals and exit gracefully
-	
-
-	
-	loop {
-		let msg = {
-			let mut comm = comm.lock().await;
-			let msg = comm.recv_msg::<DebugValidatorMessage>().await?;
-			if msg.is_none() {
-				continue;
-			}
-			msg.unwrap()
-		};
-		
-	}
-	// Ok(())
+	ipc_read_loop(comm, syscall_sender, invoke_result_senders).await?;
+	Ok(())
 }
 
 #[macro_export]

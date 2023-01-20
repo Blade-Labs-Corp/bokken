@@ -32,23 +32,32 @@ pub struct BorshAccountMeta {
     /// True if the account data or metadata may be mutated during program execution.
     pub is_writable: bool,
 }
-impl From<AccountMeta> for BorshAccountMeta {
-    fn from(meta: AccountMeta) -> Self {
-        Self {
+impl From<&AccountMeta> for BorshAccountMeta {
+	fn from(meta: &AccountMeta) -> Self {
+		Self {
 			pubkey: meta.pubkey,
 			is_signer: meta.is_signer,
 			is_writable: meta.is_writable
 		}
-    }
+	}
+}
+impl From<AccountMeta> for BorshAccountMeta {
+	fn from(meta: AccountMeta) -> Self {
+		Self {
+			pubkey: meta.pubkey,
+			is_signer: meta.is_signer,
+			is_writable: meta.is_writable
+		}
+	}
 }
 impl From<BorshAccountMeta> for AccountMeta {
 	fn from(meta: BorshAccountMeta) -> Self {
-        Self {
+		Self {
 			pubkey: meta.pubkey,
 			is_signer: meta.is_signer,
 			is_writable: meta.is_writable
 		}
-    }
+	}
 }
 
 #[derive(Debug, BorshSerialize, BorshDeserialize)]
