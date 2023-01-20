@@ -9,7 +9,7 @@ use solana_program::{
 };
 use tokio::{sync::{Mutex, RwLock, mpsc}, task};
 
-use crate::{debug_env::{DebugAccountData, DebugRuntimeMessage}, ipc_comm::IPCComm, sol_syscalls::DebugValidatorSyscallMsg};
+use crate::{debug_env::{BokkenAccountData, BokkenRuntimeMessage}, ipc_comm::IPCComm, sol_syscalls::BokkenSyscallMsg};
 // use lazy_static::lazy_static;
 
 
@@ -54,7 +54,7 @@ impl SolanaAccountsBlob {
 		program_id: Pubkey,
 		instruction: Vec<u8>,
 		account_metas: Vec<AccountMeta>,
-		mut account_datas: HashMap<Pubkey, DebugAccountData>
+		mut account_datas: HashMap<Pubkey, BokkenAccountData>
 	) -> Self {
 		let mut blob: Vec<u8> = Vec::with_capacity(
 			account_metas.len() * 20480 + // this value is arbitrary
@@ -98,7 +98,7 @@ impl SolanaAccountsBlob {
 			account_offsets
 		}
 	}
-	pub fn get_account_data(&self, pubkey: &Pubkey) -> Option<DebugAccountData> {
+	pub fn get_account_data(&self, pubkey: &Pubkey) -> Option<BokkenAccountData> {
 		if let Some(account_offset) = self.account_offsets.get(pubkey) {
 			let account_data_offset = *account_offset + std::mem::size_of::<AccountInfoHeader>();
 			let account_header = bytemuck::from_bytes::<AccountInfoHeader>(
@@ -110,7 +110,7 @@ impl SolanaAccountsBlob {
 				MAX_PERMITTED_DATA_INCREASE +
 				(account_header.original_data_len as usize % 8);
 			
-			Some( DebugAccountData {
+			Some( BokkenAccountData {
 				lamports: account_header.lamports,
 				data: self.bytes[account_data_offset..{account_data_offset + account_header.data_len as usize}].to_vec(),
 				owner: account_header.owner,
@@ -121,7 +121,7 @@ impl SolanaAccountsBlob {
 			None
 		}
 	}
-	pub fn set_account_data(&mut self, pubkey: &Pubkey, account_data: DebugAccountData) -> Result<(), ProgramError> {
+	pub fn set_account_data(&mut self, pubkey: &Pubkey, account_data: BokkenAccountData) -> Result<(), ProgramError> {
 		if let Some(account_offset) = self.account_offsets.get(pubkey) {
 			let account_data_offset = *account_offset + std::mem::size_of::<AccountInfoHeader>();
 			let account_header = bytemuck::from_bytes_mut::<AccountInfoHeader>(
@@ -170,7 +170,7 @@ impl SolanaAccountsBlob {
 		}
 	}
 
-	pub fn get_account_datas(&self) -> HashMap<Pubkey, DebugAccountData> {
+	pub fn get_account_datas(&self) -> HashMap<Pubkey, BokkenAccountData> {
 		let mut result = HashMap::new();
 		for pubkey in self.account_offsets.keys() {
 			result.insert(
@@ -184,18 +184,18 @@ impl SolanaAccountsBlob {
 
 
 #[derive(Debug)]
-pub(crate) struct SolanaDebugContext {
+pub(crate) struct BokkenSolanaContext {
 	// executed: bool,
 	pub blob: Arc<RwLock<SolanaAccountsBlob>>,
 	nonce: u64,
 	cpi_height: u8
 }
-impl SolanaDebugContext {
+impl BokkenSolanaContext {
 	pub fn new(
 		program_id: Pubkey,
 		instruction: Vec<u8>,
 		account_metas: Vec<AccountMeta>,
-		account_datas: HashMap<Pubkey, DebugAccountData>,
+		account_datas: HashMap<Pubkey, BokkenAccountData>,
 		nonce: u64,
 		cpi_height: u8,
 	) -> Self {
@@ -214,7 +214,7 @@ impl SolanaDebugContext {
 			cpi_height
 		}
 	}
-	pub fn get_account_data(&self, pubkey: &Pubkey) -> Option<DebugAccountData> {
+	pub fn get_account_data(&self, pubkey: &Pubkey) -> Option<BokkenAccountData> {
 		self.blob.blocking_read().get_account_data(pubkey)
 	}
 	pub fn is_writable(&self, pubkey: &Pubkey) -> bool {
@@ -224,7 +224,7 @@ impl SolanaDebugContext {
 		self.blob.blocking_read().is_signer(pubkey)
 	}
 
-	pub fn get_account_datas(&self) -> HashMap<Pubkey, DebugAccountData> {
+	pub fn get_account_datas(&self) -> HashMap<Pubkey, BokkenAccountData> {
 		self.blob.blocking_read().get_account_datas()
 	}
 	pub fn cpi_height(&self) -> u8 {
@@ -240,7 +240,7 @@ pub(crate) async fn execute_sol_program_thread(
 	nonce: u64,
 	blob: Arc<RwLock<SolanaAccountsBlob>>,
 	comm: Arc<Mutex<IPCComm>>,
-	context_drop_notifier: mpsc::Sender<DebugValidatorSyscallMsg>
+	context_drop_notifier: mpsc::Sender<BokkenSyscallMsg>
 ) {
 		// This is "unsafe", but we cannot write-lock the blob during the entire SOL program's execution.
 		// This is because we need to update the account data as a result of a CPI. If we locked it here, then we'd
@@ -269,14 +269,14 @@ pub(crate) async fn execute_sol_program_thread(
 			let mut comm = comm.blocking_lock();
 			println!("DEBUG: execute_sol_program_thread: locked comms");
 			context_drop_notifier.blocking_send(
-				DebugValidatorSyscallMsg::PopContext
+				BokkenSyscallMsg::PopContext
 			).expect("mpsc::Sender to not fail");
 			println!("DEBUG: execute_sol_program_thread: sent pop context");
 			let account_datas = blob.blocking_read().get_account_datas();
 			match result {
 				Ok(return_code) => {
 					comm.blocking_send_msg(
-						DebugRuntimeMessage::Executed{
+						BokkenRuntimeMessage::Executed{
 							nonce,
 							return_code,
 							account_datas
@@ -294,14 +294,14 @@ pub(crate) async fn execute_sol_program_thread(
 						},
 					};
 					comm.blocking_send_msg(
-						DebugRuntimeMessage::Log{
+						BokkenRuntimeMessage::Log{
 							nonce,
 							message: format!("Program panicked: {}", panic_msg)
 						}
 					).expect("encoding to not fail");
 					comm.blocking_send_msg(
 						// TODO: Treat panics differently
-						DebugRuntimeMessage::Executed{
+						BokkenRuntimeMessage::Executed{
 							nonce,
 							return_code: ProgramError::Custom(0).into(),
 							account_datas

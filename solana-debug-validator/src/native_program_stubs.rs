@@ -1,15 +1,15 @@
 use std::collections::HashMap;
 
-use solana_debug_runtime::debug_env::{BorshAccountMeta, DebugAccountData};
+use bokken_runtime::debug_env::{BorshAccountMeta, BokkenAccountData};
 use solana_sdk::{pubkey::Pubkey, program_error::ProgramError};
 
 pub fn assert_account_meta(
 	metas: &Vec<BorshAccountMeta>,
-	datas: &mut HashMap<Pubkey, DebugAccountData>,
+	datas: &mut HashMap<Pubkey, BokkenAccountData>,
 	index: usize,
 	writable: bool,
 	signer: bool
-) -> Result<(Pubkey, DebugAccountData), ProgramError> {
+) -> Result<(Pubkey, BokkenAccountData), ProgramError> {
 	let meta = metas.get(index).ok_or(ProgramError::NotEnoughAccountKeys)?;
 	if writable && !meta.is_writable {
 		// TODO: Better error code
@@ -36,6 +36,6 @@ pub trait NativeProgramStub: Send + Sync + std::fmt::Debug {
 		&mut self,
 		instruction: Vec<u8>,
 		account_metas: Vec<BorshAccountMeta>,
-		account_datas: &mut HashMap<Pubkey, DebugAccountData>
+		account_datas: &mut HashMap<Pubkey, BokkenAccountData>
 	) -> Result<(), ProgramError>;
 }

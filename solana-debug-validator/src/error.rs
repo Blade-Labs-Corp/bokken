@@ -3,7 +3,7 @@ use thiserror::Error;
 use std::io;
 
 #[derive(Error, Debug)]
-pub enum DebugValidatorError {
+pub enum BokkenError {
 	#[error("This shouldn't happen!")]
 	ShouldNotHappen,
 	#[error("IO Error: {0}")]
@@ -32,8 +32,8 @@ pub enum DebugValidatorError {
 	InstructionExecError(usize, ProgramError, Vec<String>)
 	
 }
-impl From<DebugValidatorError> for jsonrpsee::core::Error {
-	fn from(err: DebugValidatorError) -> Self {
+impl From<BokkenError> for jsonrpsee::core::Error {
+	fn from(err: BokkenError) -> Self {
 		Self::Custom(err.to_string())
 	}
 }

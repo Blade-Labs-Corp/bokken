@@ -4,7 +4,7 @@ use borsh::{BorshSerialize, BorshDeserialize};
 use solana_program::{pubkey::Pubkey, instruction::AccountMeta, program_error::ProgramError};
 
 #[derive(PartialEq, Eq, Debug, Clone, BorshSerialize, BorshDeserialize, Default)]
-pub struct DebugAccountData {
+pub struct BokkenAccountData {
 	// pub pubkey: Pubkey,
 	pub lamports: u64,
 	pub data: Vec<u8>,
@@ -12,7 +12,7 @@ pub struct DebugAccountData {
 	pub executable: bool,
 	pub rent_epoch: u64
 }
-impl DebugAccountData {
+impl BokkenAccountData {
 	pub fn move_lamports<'a>(&'a mut self, to: &'a mut Self, amount: u64) -> Result<(), ProgramError> {
 		if self.lamports < amount {
 			return Err(ProgramError::InsufficientFunds)
@@ -61,7 +61,7 @@ impl From<BorshAccountMeta> for AccountMeta {
 }
 
 #[derive(Debug, BorshSerialize, BorshDeserialize)]
-pub enum DebugRuntimeMessage {
+pub enum BokkenRuntimeMessage {
 	Log {
 		nonce: u64,
 		message: String
@@ -69,32 +69,32 @@ pub enum DebugRuntimeMessage {
 	Executed {
 		nonce: u64,
 		return_code: u64,
-		account_datas: HashMap<Pubkey, DebugAccountData>
+		account_datas: HashMap<Pubkey, BokkenAccountData>
 	},
 	CrossProgramInvoke {
 		nonce: u64,
 		program_id: Pubkey,
 		instruction: Vec<u8>,
 		account_metas: Vec<BorshAccountMeta>,
-		account_datas: HashMap<Pubkey, DebugAccountData>,
+		account_datas: HashMap<Pubkey, BokkenAccountData>,
 		call_depth: u8
 	}
 }
 
 
 #[derive(Debug, BorshSerialize, BorshDeserialize)]
-pub enum DebugValidatorMessage {
+pub enum BokkenValidatorMessage {
 	Invoke {
 		nonce: u64,
 		program_id: Pubkey,
 		instruction: Vec<u8>,
 		account_metas: Vec<BorshAccountMeta>,
-		account_datas: HashMap<Pubkey, DebugAccountData>,
+		account_datas: HashMap<Pubkey, BokkenAccountData>,
 		call_depth: u8
 	},
 	CrossProgramInvokeResult {
 		nonce: u64,
 		return_code: u64,
-		account_datas: HashMap<Pubkey, DebugAccountData>
+		account_datas: HashMap<Pubkey, BokkenAccountData>
 	}
 }

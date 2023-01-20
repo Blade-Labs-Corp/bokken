@@ -1,6 +1,5 @@
-use std::slice::Iter;
+use std::{slice::Iter, cell::RefMut};
 
-use blade_labs_sol_program_common::serialization::Castable;
 use solana_program::{account_info::{AccountInfo, next_account_info}, pubkey::Pubkey, program_error::ProgramError, msg, program::invoke, instruction::{Instruction, AccountMeta}};
 use std::backtrace::Backtrace;
 
@@ -24,9 +23,10 @@ pub fn process_increment_number(
 ) -> Result<(), ProgramError> {
 	msg!("Program ID: {}", program_id);
 	msg!("number: {}", number);
-	let mut test_state = TestProgramState::from_account_info_mut(
-		next_account_info(account_iter)?
-	)?;
+	let test_state_account = next_account_info(account_iter)?;
+	let mut test_state = RefMut::map(test_state_account.data.borrow_mut(), |bytes| {
+		bytemuck::from_bytes_mut(bytes)
+	});
 	msg!("Old test_state: {:#?}", test_state);
 	test_increment_func(&mut test_state, number)?;
 	msg!("New test_state: {:#?}", test_state);

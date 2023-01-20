@@ -2,22 +2,22 @@
 use std::{sync::{atomic::{AtomicU64, AtomicBool, Ordering}, Arc}, collections::HashMap, time::Duration};
 use async_recursion::async_recursion;
 use color_eyre::eyre;
-use solana_debug_runtime::{ipc_comm::IPCComm, debug_env::{DebugValidatorMessage, DebugRuntimeMessage, DebugAccountData, BorshAccountMeta}};
+use bokken_runtime::{ipc_comm::IPCComm, debug_env::{BokkenValidatorMessage, BokkenRuntimeMessage, BokkenAccountData, BorshAccountMeta}};
 use solana_sdk::{pubkey::Pubkey, transaction::TransactionError, system_program, program_error::ProgramError};
 use tokio::{net::UnixListener, task, sync::{Mutex, watch}, time::sleep};
 
-use crate::{error::DebugValidatorError, native_program_stubs::{NativeProgramStub, system_program::DebugSystemProgram}};
+use crate::{error::BokkenError, native_program_stubs::{NativeProgramStub, system_program::BokkenSystemProgram}};
 #[derive(Debug)]
 enum ProgramCallerExecStatus {
 	Executed {
 		return_code: u64,
-		account_datas: HashMap<Pubkey, DebugAccountData>
+		account_datas: HashMap<Pubkey, BokkenAccountData>
 	},
 	CPI {
 		program_id: Pubkey,
 		instruction: Vec<u8>,
 		account_metas: Vec<BorshAccountMeta>,
-		account_datas: HashMap<Pubkey, DebugAccountData>,
+		account_datas: HashMap<Pubkey, BokkenAccountData>,
 		call_depth: u8
 	}
 }
@@ -71,16 +71,16 @@ impl ProgramCaller {
 				let mut stuff_executed = false;
 				let mut comms = comms_mutex_clone.lock().await;
 				for comm in comms.values_mut() {
-					if let Some(msg) = comm.recv_msg::<DebugRuntimeMessage>().await? {
+					if let Some(msg) = comm.recv_msg::<BokkenRuntimeMessage>().await? {
 						match msg {
-							DebugRuntimeMessage::Log { nonce, message } => {
+							BokkenRuntimeMessage::Log { nonce, message } => {
 								let mut exec_logs = exec_logs_mutex_clone.lock().await;
 								if let Some(exec_log) = exec_logs.get_mut(&nonce) {
 									exec_log.push(message);
 								}
 								// ignore for now
 							},
-							DebugRuntimeMessage::Executed {
+							BokkenRuntimeMessage::Executed {
 								nonce,
 								return_code,
 								account_datas
@@ -95,7 +95,7 @@ impl ProgramCaller {
 								);
 								stuff_executed = true;
 							},
-        					DebugRuntimeMessage::CrossProgramInvoke {
+        					BokkenRuntimeMessage::CrossProgramInvoke {
 								nonce,
 								program_id,
 								instruction,
@@ -134,7 +134,7 @@ impl ProgramCaller {
 		let mut native_programs = HashMap::new();
 		native_programs.insert(
 			system_program::id(),
-			Box::new(DebugSystemProgram::new()) as Box<dyn NativeProgramStub>
+			Box::new(BokkenSystemProgram::new()) as Box<dyn NativeProgramStub>
 		);
 
 		Self {
@@ -157,10 +157,10 @@ impl ProgramCaller {
 	async fn wait_for_exec_status(
 		&mut self,
 		nonce: u64
-	) -> Result<ProgramCallerExecStatus, DebugValidatorError> {
+	) -> Result<ProgramCallerExecStatus, BokkenError> {
 		loop {
 			if self.should_stop.load(Ordering::Relaxed) {
-				return Err(DebugValidatorError::Stopping);
+				return Err(BokkenError::Stopping);
 			}
 			{
 				let mut exec_results = self.exec_results.lock().await;
@@ -171,7 +171,7 @@ impl ProgramCaller {
 				// exec_results gets dropped and unlocked
 			}
 			self.exec_notif.changed().await
-				.map_err(|_|{DebugValidatorError::ProgramClosedConnection})?;
+				.map_err(|_|{BokkenError::ProgramClosedConnection})?;
 		}
 	}
 	#[async_recursion]
@@ -180,9 +180,9 @@ impl ProgramCaller {
 		program_id: Pubkey,
 		instruction: Vec<u8>,
 		account_metas: Vec<BorshAccountMeta>,
-		account_datas: HashMap<Pubkey, DebugAccountData>,
+		account_datas: HashMap<Pubkey, BokkenAccountData>,
 		call_depth: u8,
-	) -> Result<(u64, Vec<String>, HashMap<Pubkey, DebugAccountData>), DebugValidatorError> {
+	) -> Result<(u64, Vec<String>, HashMap<Pubkey, BokkenAccountData>), BokkenError> {
 		// Hashmap here?
 		if let Some(native_program) = self.native_programs.get_mut(&program_id) {
 			let mut account_datas = account_datas;
@@ -204,9 +204,9 @@ impl ProgramCaller {
 			let mut comms = self.comms.lock().await;
 			let mut exec_logs = self.exec_logs.lock().await;
 			comms.get_mut(&program_id)
-				.ok_or(DebugValidatorError::TransactionError(TransactionError::AccountNotFound))?
+				.ok_or(BokkenError::TransactionError(TransactionError::AccountNotFound))?
 				.send_msg(
-					DebugValidatorMessage::Invoke {
+					BokkenValidatorMessage::Invoke {
 						nonce,
 						program_id,
 						instruction,
@@ -220,7 +220,7 @@ impl ProgramCaller {
 		}
 		loop {
 			if self.should_stop.load(Ordering::Relaxed) {
-				return Err(DebugValidatorError::Stopping);
+				return Err(BokkenError::Stopping);
 			}
 			match self.wait_for_exec_status(nonce).await? {
 				ProgramCallerExecStatus::Executed {
@@ -260,9 +260,9 @@ impl ProgramCaller {
 					}
 					let mut comms = self.comms.lock().await;
 					comms.get_mut(&program_id)
-						.ok_or(DebugValidatorError::TransactionError(TransactionError::AccountNotFound))?
+						.ok_or(BokkenError::TransactionError(TransactionError::AccountNotFound))?
 						.send_msg(
-							DebugValidatorMessage::CrossProgramInvokeResult {
+							BokkenValidatorMessage::CrossProgramInvokeResult {
 								nonce,
 								return_code: sub_return_code,
 								account_datas: new_account_datas

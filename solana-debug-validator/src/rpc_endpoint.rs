@@ -1,7 +1,7 @@
 use color_eyre::eyre;
 use jsonrpsee::server::ServerBuilder;
 use jsonrpsee::{proc_macros::rpc, core::async_trait, core::RpcResult};
-use solana_debug_runtime::debug_env::BorshAccountMeta;
+use bokken_runtime::debug_env::BorshAccountMeta;
 use solana_sdk::instruction::InstructionError;
 use solana_sdk::program_error::ProgramError;
 use solana_sdk::pubkey::Pubkey;
@@ -16,8 +16,8 @@ use std::sync::Arc;
 use jsonrpsee::server::logger::{HttpRequest, MethodKind, TransportProtocol, Logger};
 use jsonrpsee::types::Params;
 
-use crate::debug_ledger::{DebugLedger, DebugLedgerInstruction, DebugLedgerAccountReturnChoice};
-use crate::error::DebugValidatorError;
+use crate::debug_ledger::{BokkenLedger, BokkenLedgerInstruction, BokkenLedgerAccountReturnChoice};
+use crate::error::BokkenError;
 use crate::program_caller::ProgramCaller;
 use crate::rpc_endpoint_structs::{RpcGetLatestBlockhashRequest, RpcVersionResponse, RpcGetLatestBlockhashResponse, RpcGetLatestBlockhashResponseValue, RpcResponseContext, RpcSimulateTransactionRequest, RpcSimulateTransactionResponse, RpcBinaryEncoding, RpcSimulateTransactionResponseValue, RpcSimulateTransactionResponseAccounts, RPCBinaryEncodedString, RpcGetAccountInfoRequest, RpcGetAccountInfoResponse, RpcGetBalanceResponse, RpcGetBalanceRequest, RpcGetAccountInfoResponseValue, RpcGenericConfigRequest, RpcSendTransactionRequest};
 
@@ -45,15 +45,15 @@ pub trait SolanaDebuggerRpc {
 }
 
 pub struct SolanaDebuggerRpcImpl {
-	ledger: Arc<Mutex<DebugLedger>>
+	ledger: Arc<Mutex<BokkenLedger>>
 }
 impl SolanaDebuggerRpcImpl {
-	fn new(ledger: DebugLedger) -> Self {
+	fn new(ledger: BokkenLedger) -> Self {
 		Self {
 			ledger: Arc::new(Mutex::new(ledger))
 		}
 	}
-	async fn _get_account_info(&self, pubkey: String, config: Option<RpcGetAccountInfoRequest>) -> Result<RpcGetAccountInfoResponse, DebugValidatorError> {
+	async fn _get_account_info(&self, pubkey: String, config: Option<RpcGetAccountInfoRequest>) -> Result<RpcGetAccountInfoResponse, BokkenError> {
 		let pubkey = Pubkey::from_str(&pubkey)?;
 		let config = config.unwrap_or_default();
 		let ledger = self.ledger.lock().await;
@@ -77,7 +77,7 @@ impl SolanaDebuggerRpcImpl {
 			}
 		)
 	}
-	async fn _get_balance(&self, pubkey: String, config: Option<RpcGetBalanceRequest>) -> Result<RpcGetBalanceResponse, DebugValidatorError> {
+	async fn _get_balance(&self, pubkey: String, config: Option<RpcGetBalanceRequest>) -> Result<RpcGetBalanceResponse, BokkenError> {
 		let pubkey = Pubkey::from_str(&pubkey)?;
 		let config = config.unwrap_or_default();
 		let ledger = self.ledger.lock().await;
@@ -92,7 +92,7 @@ impl SolanaDebuggerRpcImpl {
 		&self,
 		tx_data: String,
 		config: Option<RpcSendTransactionRequest>
-	) -> Result<String, DebugValidatorError> {
+	) -> Result<String, BokkenError> {
 		let config = config.unwrap_or_default();
 		// tx encoding has a default encoding type compared to everything else, woohoo!
 		let tx: Transaction = bincode::deserialize(&match config.encoding.unwrap_or(RpcBinaryEncoding::Base58) {
@@ -124,7 +124,7 @@ impl SolanaDebuggerRpcImpl {
 				}
 
 			}).collect::<Vec<BorshAccountMeta>>();
-			DebugLedgerInstruction {
+			BokkenLedgerInstruction {
 				program_id,
 				account_metas,
 				data: ix.data.clone()
@@ -133,7 +133,7 @@ impl SolanaDebuggerRpcImpl {
 
 		let _ = ledger.execute_instructions(
 			ixs,
-			DebugLedgerAccountReturnChoice::None,
+			BokkenLedgerAccountReturnChoice::None,
 			true
 		).await?;
 		Ok(bs58::encode(tx.signatures[0]).into_string())
@@ -142,7 +142,7 @@ impl SolanaDebuggerRpcImpl {
 		&self,
 		tx_data: String,
 		config: Option<RpcSimulateTransactionRequest>
-	) -> Result<RpcSimulateTransactionResponse, DebugValidatorError> {
+	) -> Result<RpcSimulateTransactionResponse, BokkenError> {
 		let config = config.unwrap_or_default();
 		let config_account_addresses = {
 			let mut config_account_addresses = Vec::new();
@@ -188,7 +188,7 @@ impl SolanaDebuggerRpcImpl {
 				}
 
 			}).collect::<Vec<BorshAccountMeta>>();
-			DebugLedgerInstruction {
+			BokkenLedgerInstruction {
 				program_id,
 				account_metas,
 				data: ix.data.clone()
@@ -197,7 +197,7 @@ impl SolanaDebuggerRpcImpl {
 
 		match ledger.execute_instructions(
 			ixs,
-			DebugLedgerAccountReturnChoice::Only(config_account_addresses.clone()),
+			BokkenLedgerAccountReturnChoice::Only(config_account_addresses.clone()),
 			false
 		).await {
 			Ok((states, logs)) => {
@@ -225,7 +225,7 @@ impl SolanaDebuggerRpcImpl {
 			},
 			Err(e) => {
 				match e {
-					DebugValidatorError::InstructionExecError(index, program_error, logs) => {
+					BokkenError::InstructionExecError(index, program_error, logs) => {
 						Ok(
 							RpcSimulateTransactionResponse {
 								context: RpcResponseContext { slot: ledger.slot() },
@@ -346,10 +346,10 @@ impl Logger for MyRpcLogger {
 }
 
 
-// use crate::error::DebugValidatorError;
+// use crate::error::BokkenError;
 pub async fn start_endpoint(
 	addr: SocketAddr,
-	ledger: DebugLedger
+	ledger: BokkenLedger
 ) -> eyre::Result<()> {
 	let server = ServerBuilder::default().set_logger(MyRpcLogger).build(addr).await?;
 	//let addr = server.local_addr().unwrap();

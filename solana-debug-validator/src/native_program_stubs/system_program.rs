@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use solana_debug_runtime::debug_env::{BorshAccountMeta, DebugAccountData};
+use bokken_runtime::debug_env::{BorshAccountMeta, BokkenAccountData};
 use solana_sdk::{program_error::ProgramError, system_instruction::SystemInstruction, pubkey::Pubkey};
 
 use super::{NativeProgramStub, assert_account_meta};
@@ -8,17 +8,17 @@ use super::{NativeProgramStub, assert_account_meta};
 const MAX_ACCOUNT_SIZE: u64 = 10 * 1024 * 1024;
 
 #[derive(Debug)]
-pub struct DebugSystemProgram {
+pub struct BokkenSystemProgram {
 	logs: Vec<String>
 }
-impl DebugSystemProgram {
+impl BokkenSystemProgram {
 	pub fn new() -> Self {
 		Self {
 			logs: Vec::new()
 		}
 	}
 }
-impl NativeProgramStub for DebugSystemProgram {
+impl NativeProgramStub for BokkenSystemProgram {
 	fn clear_logs(&mut self) {
 		self.logs.clear()
 	}
@@ -35,7 +35,7 @@ impl NativeProgramStub for DebugSystemProgram {
 		&mut self,
 		instruction: Vec<u8>,
 		account_metas: Vec<BorshAccountMeta>,
-		account_datas: &mut HashMap<Pubkey, DebugAccountData>
+		account_datas: &mut HashMap<Pubkey, BokkenAccountData>
 	) -> Result<(), ProgramError> {
 		match bincode::deserialize::<SystemInstruction>(&instruction).map_err(|_|{ProgramError::InvalidInstructionData})? {
 			SystemInstruction::CreateAccount {lamports, space, owner } => {

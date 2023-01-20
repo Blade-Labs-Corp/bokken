@@ -2,12 +2,12 @@ use std::{path::PathBuf, collections::HashMap, io};
 
 use borsh::{BorshSerialize, BorshDeserialize};
 use color_eyre::eyre;
-use solana_debug_runtime::debug_env::{DebugAccountData, BorshAccountMeta};
+use bokken_runtime::debug_env::{BokkenAccountData, BorshAccountMeta};
 use solana_sdk::{pubkey, pubkey::Pubkey, system_program, program_error::ProgramError, transaction::TransactionError};
 use tokio::fs;
 use lazy_static::lazy_static;
 
-use crate::{error::DebugValidatorError, program_caller::ProgramCaller};
+use crate::{error::BokkenError, program_caller::ProgramCaller};
 
 const RENT_BASE_SIZE: u64 = 128;
 pub const PUBKEY_NULL: Pubkey = pubkey!("nu11111111111111111111111111111111111111111");
@@ -17,35 +17,35 @@ lazy_static! {
 }
 
 #[derive(Debug)]
-pub struct DebugLedgerInitConfig {
+pub struct BokkenLedgerInitConfig {
 	pub initial_mint: Pubkey,
 	pub initial_mint_lamports: u64
 }
 #[derive(Debug)]
-pub struct DebugLedger {
+pub struct BokkenLedger {
 	base_path: PathBuf,
 	accounts_path: PathBuf,
 	program_caller: ProgramCaller,
-	state: DebugLedgerState
+	state: BokkenLedgerState
 }
 #[derive(Debug)]
-pub struct DebugLedgerInstruction {
+pub struct BokkenLedgerInstruction {
 	pub program_id: Pubkey,
 	pub account_metas: Vec<BorshAccountMeta>,
 	pub data: Vec<u8>
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DebugLedgerAccountReturnChoice {
+pub enum BokkenLedgerAccountReturnChoice {
 	None,
 	All,
 	Edited,
 	Only(Vec<Pubkey>)
 }
-impl DebugLedger {
+impl BokkenLedger {
 	pub async fn new(
 		base_path: PathBuf,
 		program_caller: ProgramCaller,
-		init_mint_config: Option<DebugLedgerInitConfig>
+		init_mint_config: Option<BokkenLedgerInitConfig>
 	) -> eyre::Result<Self> {
 		let accounts_path = {
 			let mut p = base_path.clone();
@@ -61,13 +61,13 @@ impl DebugLedger {
 			base_path,
 			accounts_path,
 			program_caller,
-			state: DebugLedgerState::new(state_path).await?
+			state: BokkenLedgerState::new(state_path).await?
 		};
 		match fs::create_dir(&sayulf.base_path).await {
 			Ok(_) => {
 				fs::create_dir(&sayulf.accounts_path).await?;
-				let init_mint_config = init_mint_config.ok_or(DebugValidatorError::InitConfigIsNone)?;
-				let init_mint_account = DebugAccountData {
+				let init_mint_config = init_mint_config.ok_or(BokkenError::InitConfigIsNone)?;
+				let init_mint_account = BokkenAccountData {
 					lamports: init_mint_config.initial_mint_lamports,
 					data: Vec::new(),
 					owner: system_program::id(),
@@ -98,7 +98,7 @@ impl DebugLedger {
 	pub fn calc_min_balance_for_rent_exemption(&self, data_len: u64) -> u64 {
 		(RENT_BASE_SIZE + data_len) * self.state.rent_per_byte_year() * 2
 	}
-	pub async fn save_account(&self, pubkey: &Pubkey, data: &DebugAccountData) -> Result<(), DebugValidatorError> {
+	pub async fn save_account(&self, pubkey: &Pubkey, data: &BokkenAccountData) -> Result<(), BokkenError> {
 		let mut account_path = self.accounts_path.clone();
 		account_path.push(pubkey.to_string());
 		fs::create_dir_all(&account_path).await?;
@@ -106,17 +106,17 @@ impl DebugLedger {
 		fs::write(
 			&account_path,
 			if data.lamports == 0 {
-				DebugAccountData::default().try_to_vec()?
+				BokkenAccountData::default().try_to_vec()?
 			}else{
 				data.try_to_vec()?
 			}
 		).await?;
 		Ok(())
 	}
-	pub async fn read_account(&self, pubkey: &Pubkey) -> Result<DebugAccountData, DebugValidatorError> {
+	pub async fn read_account(&self, pubkey: &Pubkey) -> Result<BokkenAccountData, BokkenError> {
 		if self.program_caller.has_program_id(pubkey).await {
 			return Ok(
-				DebugAccountData {
+				BokkenAccountData {
 					lamports: 0xf09f91bb,
 					data: GHOST_DATA.clone(),
 					owner: PUBKEY_DEBUG_PROGRAM_LOADER,
@@ -140,11 +140,11 @@ impl DebugLedger {
 				account_path.push(max_slot.to_string());
 				match fs::read(account_path).await {
 					Ok(file_data) => {
-						let file_data_parsed = DebugAccountData::try_from_slice(&file_data)?;
+						let file_data_parsed = BokkenAccountData::try_from_slice(&file_data)?;
 						Ok(file_data_parsed)
 					},
 					Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-						Ok(DebugAccountData::default())
+						Ok(BokkenAccountData::default())
 					},
 					Err(e) => {
 						return Err(e.into())
@@ -152,7 +152,7 @@ impl DebugLedger {
 				}
 			},
 			Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-				Ok(DebugAccountData::default())
+				Ok(BokkenAccountData::default())
 			},
 			Err(e) => {
 				return Err(e.into())
@@ -161,10 +161,10 @@ impl DebugLedger {
 	}
 	pub async fn execute_instruction(
 		&mut self,
-		instruction: DebugLedgerInstruction,
+		instruction: BokkenLedgerInstruction,
 		call_depth: u8,
-		state: &mut HashMap<Pubkey, DebugAccountData>
-	) -> Result<(u64, Vec<String>), DebugValidatorError> {
+		state: &mut HashMap<Pubkey, BokkenAccountData>
+	) -> Result<(u64, Vec<String>), BokkenError> {
 		// Only send ixs required to the child process (this probably wastes more perf than it saves)
 		let account_datas_for_ix = {
 		 	let mut account_datas_for_ix = HashMap::new();
@@ -196,10 +196,10 @@ impl DebugLedger {
 	}
 	pub async fn execute_instructions(
 		&mut self,
-		instructions: Vec<DebugLedgerInstruction>,
-		return_choice: DebugLedgerAccountReturnChoice,
+		instructions: Vec<BokkenLedgerInstruction>,
+		return_choice: BokkenLedgerAccountReturnChoice,
 		commit_changes: bool
-	) -> Result<(HashMap<Pubkey, DebugAccountData>, Vec<String>), DebugValidatorError> {
+	) -> Result<(HashMap<Pubkey, BokkenAccountData>, Vec<String>), BokkenError> {
 		let mut the_big_log = Vec::new();
 		let account_datas = {
 			let mut account_datas = HashMap::new();
@@ -217,7 +217,7 @@ impl DebugLedger {
 			let (return_code, logs) = self.execute_instruction(ix, 1, &mut account_datas_changed).await?;
 			the_big_log.extend(logs);
 			if return_code != 0 {
-				return Err(DebugValidatorError::InstructionExecError(i, return_code.into(), the_big_log));
+				return Err(BokkenError::InstructionExecError(i, return_code.into(), the_big_log));
 			}
 		}
 		let edited_accounts = {
@@ -234,16 +234,16 @@ impl DebugLedger {
 			result
 		};
 		let account_data_result = match return_choice {
-			DebugLedgerAccountReturnChoice::None => {
+			BokkenLedgerAccountReturnChoice::None => {
 				HashMap::new()
 			}
-			DebugLedgerAccountReturnChoice::All => {
+			BokkenLedgerAccountReturnChoice::All => {
 				account_datas_changed
 			},
-			DebugLedgerAccountReturnChoice::Edited => {
+			BokkenLedgerAccountReturnChoice::Edited => {
 				edited_accounts
 			},
-			DebugLedgerAccountReturnChoice::Only(pubkeys) => {
+			BokkenLedgerAccountReturnChoice::Only(pubkeys) => {
 				let mut result = HashMap::new();
 				for pubkey in pubkeys.into_iter() {
 					result.insert(pubkey, account_datas_changed.get(&pubkey).unwrap().clone());
@@ -260,14 +260,14 @@ impl DebugLedger {
 }
 
 #[derive(Debug, Default, BorshSerialize, BorshDeserialize)]
-struct DebugLedgerState {
+struct BokkenLedgerState {
 	#[borsh_skip]
 	path: PathBuf,
 	slot: u64,
 	rent_per_byte_year: u64,
 
 }
-impl DebugLedgerState {
+impl BokkenLedgerState {
 	pub async fn new(path: PathBuf) -> Result<Self, io::Error> {
 		match fs::read(&path).await {
 			Ok(data) => {
@@ -292,7 +292,7 @@ impl DebugLedgerState {
 	}
 	pub async fn inc_slot(&mut self) -> Result<(), io::Error> {
 		self.slot += 1;
-		println!("DebugLedgerState: inc_slot to {}", self.slot);
+		println!("BokkenLedgerState: inc_slot to {}", self.slot);
 		self.save().await
 	}
 	pub fn slot(&self) -> u64 {

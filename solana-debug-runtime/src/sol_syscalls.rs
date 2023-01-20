@@ -4,13 +4,13 @@ use solana_program::{program_stubs::SyscallStubs, program_error::{UNSUPPORTED_SY
 use tokio::{sync::{Mutex, mpsc, RwLock}, task};
 use itertools::Itertools;
 
-use crate::{ipc_comm::IPCComm, debug_env::{DebugRuntimeMessage, DebugAccountData}, executor::{SolanaDebugContext, execute_sol_program_thread, SolanaAccountsBlob}};
+use crate::{ipc_comm::IPCComm, debug_env::{BokkenRuntimeMessage, BokkenAccountData}, executor::{BokkenSolanaContext, execute_sol_program_thread, SolanaAccountsBlob}};
 
 #[derive(Debug)]
-pub(crate) enum DebugValidatorSyscallMsg {
+pub(crate) enum BokkenSyscallMsg {
 	PushContext {
-		ctx: SolanaDebugContext,
-		msg_sender_clone: mpsc::Sender<DebugValidatorSyscallMsg>,
+		ctx: BokkenSolanaContext,
+		msg_sender_clone: mpsc::Sender<BokkenSyscallMsg>,
 	},
 	PopContext
 }
@@ -18,20 +18,20 @@ pub(crate) enum DebugValidatorSyscallMsg {
 /// I'm making a big assumption that the paren't process isn't attempting to run this program in parralel.
 /// But I do want to handle self-recursing calls
 #[derive(Debug)]
-pub(crate) struct DebugValidatorSyscalls {
+pub(crate) struct BokkenSyscalls {
 	ipc: Arc<Mutex<IPCComm>>,
 	program_id: Pubkey,
-	invoke_result_senders: Arc<Mutex<HashMap<u64, mpsc::Sender<(u64, HashMap<Pubkey, DebugAccountData>)>>>>,
+	invoke_result_senders: Arc<Mutex<HashMap<u64, mpsc::Sender<(u64, HashMap<Pubkey, BokkenAccountData>)>>>>,
 	// Using a mutex is just the easiest way to make the property mutable while being Send + Sync that I know of
 	return_data: Arc<Mutex<Option<(Pubkey, Vec<u8>)>>>,
-	contexts: Arc<Mutex<Vec<SolanaDebugContext>>>,
+	contexts: Arc<Mutex<Vec<BokkenSolanaContext>>>,
 }
-impl DebugValidatorSyscalls {
+impl BokkenSyscalls {
 	pub fn new(
 		ipc: Arc<Mutex<IPCComm>>,
 		program_id: Pubkey,
-		invoke_result_senders: Arc<Mutex<HashMap<u64, mpsc::Sender<(u64, HashMap<Pubkey, DebugAccountData>)>>>>,
-		mut msg_receiver: mpsc::Receiver<DebugValidatorSyscallMsg>
+		invoke_result_senders: Arc<Mutex<HashMap<u64, mpsc::Sender<(u64, HashMap<Pubkey, BokkenAccountData>)>>>>,
+		mut msg_receiver: mpsc::Receiver<BokkenSyscallMsg>
 	) -> Self {
 		let contexts= Arc::new(Mutex::new(Vec::new()));
 		let contexts_clone = contexts.clone();
@@ -39,13 +39,13 @@ impl DebugValidatorSyscalls {
 		task::spawn(async move {
 			while let Some(msg) = msg_receiver.recv().await {
 				match msg {
-					DebugValidatorSyscallMsg::PushContext { ctx, msg_sender_clone } => {
+					BokkenSyscallMsg::PushContext { ctx, msg_sender_clone } => {
 						let blob = ctx.blob.clone();
 						let nonce = ctx.nonce();
 						contexts_clone.lock().await.push(ctx);
 						execute_sol_program_thread(nonce, blob, ipc_clone.clone(), msg_sender_clone).await;
 					},
-					DebugValidatorSyscallMsg::PopContext => {
+					BokkenSyscallMsg::PopContext => {
 						contexts_clone.lock().await.pop();
 					},
 				}
@@ -55,10 +55,10 @@ impl DebugValidatorSyscalls {
 		thread::spawn(async move {
 			while let Some(msg) = msg_receiver.recv().await {
 				match msg {
-					DebugValidatorSyscallMsg::PushContext { ctx } => {
+					BokkenSyscallMsg::PushContext { ctx } => {
 						context_values_clone.lock().await.push(ctx);
 					},
-					DebugValidatorSyscallMsg::PopContext => {
+					BokkenSyscallMsg::PopContext => {
 						context_values_clone.lock().await.pop();
 					},
 				}
@@ -102,13 +102,13 @@ impl DebugValidatorSyscalls {
 	}
 }
 
-impl SyscallStubs for DebugValidatorSyscalls {
+impl SyscallStubs for BokkenSyscalls {
 	fn sol_log(&self, message: &str) {
 		let msg = format!("Program logged: {}", message);
 		println!("{}", msg);
 		let mut ipc = self.ipc.blocking_lock();
 		ipc.blocking_send_msg(
-			DebugRuntimeMessage::Log {
+			BokkenRuntimeMessage::Log {
 				nonce: self.nonce(),
 				message: msg
 			}
@@ -166,7 +166,7 @@ impl SyscallStubs for DebugValidatorSyscalls {
 		};
 		{
 			self.ipc.blocking_lock().blocking_send_msg(
-				DebugRuntimeMessage::CrossProgramInvoke {
+				BokkenRuntimeMessage::CrossProgramInvoke {
 					nonce: self.nonce(),
 					program_id: self.program_id,
 					instruction: instruction.data.clone(),

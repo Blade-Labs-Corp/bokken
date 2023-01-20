@@ -3,9 +3,9 @@ use std::net::{SocketAddr, IpAddr, Ipv4Addr, SocketAddrV4, SocketAddrV6};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
-use debug_ledger::DebugLedgerInitConfig;
+use debug_ledger::BokkenLedgerInitConfig;
 use program_caller::ProgramCaller;
-use solana_debug_runtime::ipc_comm::IPCComm;
+use bokken_runtime::ipc_comm::IPCComm;
 use solana_sdk::{pubkey, pubkey::Pubkey};
 use color_eyre::eyre::Result;
 use tokio::net::UnixListener;
@@ -20,7 +20,7 @@ mod rpc_endpoint;
 mod native_program_stubs;
 mod program_caller;
 
-use crate::debug_ledger::DebugLedger;
+use crate::debug_ledger::BokkenLedger;
 
 
 #[derive(Clone, Debug, Bpaf)]
@@ -49,10 +49,10 @@ async fn main() -> Result<()> {
 
 	let opts = command_options().run();
 	let ipc_listener = UnixListener::bind(opts.socket_path)?;
-	let ledger = DebugLedger::new(
+	let ledger = BokkenLedger::new(
 		opts.save_path,
 		ProgramCaller::new(ipc_listener),
-		Some(DebugLedgerInitConfig {
+		Some(BokkenLedgerInitConfig {
 			initial_mint: pubkey!("2iXtA8oeZqUU5pofxK971TCEvFGfems2AcDRaZHKD2pQ"),
 			initial_mint_lamports: 10000000000000000
 		})

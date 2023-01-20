@@ -1,2 +1,2 @@
 
-solana_debug_runtime::debug_validator_program!(test_program);
+bokken_runtime::bokken_program!(test_program);

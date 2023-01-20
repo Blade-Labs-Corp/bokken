@@ -1,10 +1,10 @@
 use std::{path::PathBuf, sync::{Arc, atomic::{AtomicBool, Ordering}}, collections::{HashSet, HashMap}, thread::JoinHandle, time::Duration};
 
 use color_eyre::eyre;
-use debug_env::{DebugValidatorMessage, DebugRuntimeMessage, DebugAccountData};
-use executor::SolanaDebugContext;
+use debug_env::{BokkenValidatorMessage, BokkenRuntimeMessage, BokkenAccountData};
+use executor::BokkenSolanaContext;
 use ipc_comm::IPCComm;
-use sol_syscalls::{DebugValidatorSyscalls, DebugValidatorSyscallMsg};
+use sol_syscalls::{BokkenSyscalls, BokkenSyscallMsg};
 use solana_program::{pubkey::Pubkey, program_stubs::set_syscall_stubs};
 use bpaf::Bpaf;
 use tokio::{net::UnixStream, sync::{Mutex, mpsc}, task, join, time::sleep};
@@ -31,8 +31,8 @@ struct CommandOptions {
 
 async fn ipc_read_loop(
 	comm: Arc<Mutex<IPCComm>>,
-	syscall_sender: mpsc::Sender<DebugValidatorSyscallMsg>,
-	invoke_result_senders: Arc<Mutex<HashMap<u64, mpsc::Sender<(u64, HashMap<Pubkey, DebugAccountData>)>>>>
+	syscall_sender: mpsc::Sender<BokkenSyscallMsg>,
+	invoke_result_senders: Arc<Mutex<HashMap<u64, mpsc::Sender<(u64, HashMap<Pubkey, BokkenAccountData>)>>>>
 ) -> eyre::Result<()> {
 	loop {
 		// We must poll or else we prevent Logs and CPIs from getting sent
@@ -49,7 +49,7 @@ async fn ipc_read_loop(
 			}
 		};
 		match msg {
-			DebugValidatorMessage::Invoke {
+			BokkenValidatorMessage::Invoke {
 				nonce,
 				program_id,
 				instruction,
@@ -57,7 +57,7 @@ async fn ipc_read_loop(
 				account_datas,
 				call_depth
 			} => {
-				let context = SolanaDebugContext::new(
+				let context = BokkenSolanaContext::new(
 					program_id,
 					instruction,
 					account_metas.into_iter().map(|v|{v.into()}).collect(),
@@ -66,13 +66,13 @@ async fn ipc_read_loop(
 					call_depth
 				);
 				syscall_sender.send(
-					DebugValidatorSyscallMsg::PushContext{
+					BokkenSyscallMsg::PushContext{
 						ctx: context,
 						msg_sender_clone: syscall_sender.clone()
 					}
 				).await?;
 			},
-   			DebugValidatorMessage::CrossProgramInvokeResult {
+   			BokkenValidatorMessage::CrossProgramInvokeResult {
 				nonce,
 				return_code,
 				account_datas
@@ -86,22 +86,22 @@ async fn ipc_read_loop(
 	Ok(())
 }
 
-pub async fn debug_runtime_main() -> eyre::Result<()> {
+pub async fn bokken_runtime_main() -> eyre::Result<()> {
 	let opts = command_options().run();
 	let comm = Arc::new(Mutex::new(IPCComm::new(UnixStream::connect(opts.socket_path).await?)));
 	{
 		comm.lock().await.send_msg(opts.program_id).await?;
 	}
-	let (syscall_sender, syscall_receiver) = mpsc::channel::<DebugValidatorSyscallMsg>(1);
+	let (syscall_sender, syscall_receiver) = mpsc::channel::<BokkenSyscallMsg>(1);
 	let invoke_result_senders = Arc::new(Mutex::new(HashMap::new()));
-	let syscall_mgr = Box::new(DebugValidatorSyscalls::new(
+	let syscall_mgr = Box::new(BokkenSyscalls::new(
 		comm.clone(),
 		opts.program_id,
 		invoke_result_senders.clone(),
 		syscall_receiver
 	));
 	set_syscall_stubs(syscall_mgr);
-	println!("DEBUG: debug_runtime_main: sent program id");
+	println!("DEBUG: bokken_runtime_main: sent program id");
 
 	// TODO: Listen for signals and exit gracefully
 	ipc_read_loop(comm, syscall_sender, invoke_result_senders).await?;
@@ -109,14 +109,14 @@ pub async fn debug_runtime_main() -> eyre::Result<()> {
 }
 
 #[macro_export]
-macro_rules! debug_validator_program {
+macro_rules! bokken_program {
     ($program_crate_name:ident) => {
 		extern crate $program_crate_name;
 
 		#[tokio::main]
 		async fn main() -> color_eyre::eyre::Result<()> {
 			color_eyre::install()?;
-			solana_debug_runtime::debug_runtime_main().await
+			bokken_runtime::bokken_runtime_main().await
 		}
     };
 }
