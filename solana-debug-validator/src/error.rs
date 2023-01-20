@@ -1,4 +1,4 @@
-use solana_sdk::{transaction::TransactionError, sanitize::SanitizeError, program_error::ProgramError};
+use solana_sdk::{transaction::TransactionError, sanitize::SanitizeError, program_error::ProgramError, pubkey::ParsePubkeyError};
 use thiserror::Error;
 use std::io;
 
@@ -22,6 +22,8 @@ pub enum DebugValidatorError {
 	TransactionError(#[from] TransactionError),
 	#[error("Sanitize error: {0}")]
 	SanitizeError(#[from] SanitizeError),
+	#[error("Pubkey parse error: {0}")]
+	PubkeyParseError(#[from] ParsePubkeyError),
 	#[error("Connection to program dropped while waiting for execution result")]
 	ProgramClosedConnection,
 	#[error("The program is stopping")]

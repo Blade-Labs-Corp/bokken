@@ -43,7 +43,7 @@ impl DebugValidatorSyscalls {
 						let blob = ctx.blob.clone();
 						let nonce = ctx.nonce();
 						contexts_clone.lock().await.push(ctx);
-						execute_sol_program_thread(nonce, blob, ipc_clone.clone(), msg_sender_clone);
+						execute_sol_program_thread(nonce, blob, ipc_clone.clone(), msg_sender_clone).await;
 					},
 					DebugValidatorSyscallMsg::PopContext => {
 						contexts_clone.lock().await.pop();
@@ -165,8 +165,6 @@ impl SyscallStubs for DebugValidatorSyscalls {
 			// self.invoke_result_senders unlocks
 		};
 		{
-			
-			
 			self.ipc.blocking_lock().blocking_send_msg(
 				DebugRuntimeMessage::CrossProgramInvoke {
 					nonce: self.nonce(),

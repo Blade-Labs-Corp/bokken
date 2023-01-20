@@ -232,6 +232,9 @@ impl IPCComm {
 			self.recv_notif.changed().await.expect("Recever shouldn't drop without sending a message first");
 		}
 	}
+	pub fn stopped(&self) -> bool {
+		self.should_stop.load(Ordering::Relaxed)
+	}
 	pub fn stop(&self) {
 		self.should_stop.store(true, Ordering::Relaxed);
 	}

@@ -252,6 +252,7 @@ impl DebugLedger {
 			}
 		};
 		if commit_changes {
+			self.state.inc_slot().await?;
 			println!("TODO: Save log and ix history");
 		}
 		Ok((account_data_result, the_big_log))
@@ -291,6 +292,7 @@ impl DebugLedgerState {
 	}
 	pub async fn inc_slot(&mut self) -> Result<(), io::Error> {
 		self.slot += 1;
+		println!("DebugLedgerState: inc_slot to {}", self.slot);
 		self.save().await
 	}
 	pub fn slot(&self) -> u64 {

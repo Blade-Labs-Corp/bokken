@@ -11,6 +11,7 @@ use tokio::sync::Mutex;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::rc::Rc;
+use std::str::FromStr;
 use std::sync::Arc;
 use jsonrpsee::server::logger::{HttpRequest, MethodKind, TransportProtocol, Logger};
 use jsonrpsee::types::Params;
@@ -25,9 +26,9 @@ use crate::rpc_endpoint_structs::{RpcGetLatestBlockhashRequest, RpcVersionRespon
 #[rpc(server)]
 pub trait SolanaDebuggerRpc {
 	#[method(name = "getAccountInfo")]
-	async fn get_account_info(&self, pubkey: Pubkey, config: Option<RpcGetAccountInfoRequest>) -> RpcResult<RpcGetAccountInfoResponse>;
+	async fn get_account_info(&self, pubkey: String, config: Option<RpcGetAccountInfoRequest>) -> RpcResult<RpcGetAccountInfoResponse>;
 	#[method(name = "getBalance")]
-	async fn get_balance(&self, pubkey: Pubkey, config: Option<RpcGetBalanceRequest>) -> RpcResult<RpcGetBalanceResponse>;
+	async fn get_balance(&self, pubkey: String, config: Option<RpcGetBalanceRequest>) -> RpcResult<RpcGetBalanceResponse>;
 	#[method(name = "getBlockHeight")]
 	async fn get_block_height(&self, _config: Option<RpcGetBalanceRequest>) -> RpcResult<u64>;
 	#[method(name = "getLatestBlockhash")]
@@ -52,7 +53,8 @@ impl SolanaDebuggerRpcImpl {
 			ledger: Arc::new(Mutex::new(ledger))
 		}
 	}
-	async fn _get_account_info(&self, pubkey: Pubkey, config: Option<RpcGetAccountInfoRequest>) -> Result<RpcGetAccountInfoResponse, DebugValidatorError> {
+	async fn _get_account_info(&self, pubkey: String, config: Option<RpcGetAccountInfoRequest>) -> Result<RpcGetAccountInfoResponse, DebugValidatorError> {
+		let pubkey = Pubkey::from_str(&pubkey)?;
 		let config = config.unwrap_or_default();
 		let ledger = self.ledger.lock().await;
 		let data = ledger.read_account(&pubkey).await?;
@@ -65,7 +67,7 @@ impl SolanaDebuggerRpcImpl {
 					Some(
 						RpcGetAccountInfoResponseValue {
 							lamports: data.lamports,
-							owner: data.owner,
+							owner: data.owner.to_string(),
 							data: RPCBinaryEncodedString::from_bytes(&data.data, config.encoding),
 							executable: data.executable,
 							rent_epoch: data.rent_epoch,
@@ -75,7 +77,8 @@ impl SolanaDebuggerRpcImpl {
 			}
 		)
 	}
-	async fn _get_balance(&self, pubkey: Pubkey, config: Option<RpcGetBalanceRequest>) -> Result<RpcGetBalanceResponse, DebugValidatorError> {
+	async fn _get_balance(&self, pubkey: String, config: Option<RpcGetBalanceRequest>) -> Result<RpcGetBalanceResponse, DebugValidatorError> {
+		let pubkey = Pubkey::from_str(&pubkey)?;
 		let config = config.unwrap_or_default();
 		let ledger = self.ledger.lock().await;
 		Ok(
@@ -141,6 +144,14 @@ impl SolanaDebuggerRpcImpl {
 		config: Option<RpcSimulateTransactionRequest>
 	) -> Result<RpcSimulateTransactionResponse, DebugValidatorError> {
 		let config = config.unwrap_or_default();
+		let config_account_addresses = {
+			let mut config_account_addresses = Vec::new();
+			for pubkey_string in config.accounts.addresses.iter() {
+				config_account_addresses.push(Pubkey::from_str(pubkey_string)?);
+			}
+			config_account_addresses
+		};
+			
 		
 		// tx encoding has a default encoding type compared to everything else, woohoo!
 		let tx: Transaction = bincode::deserialize(&match config.encoding.unwrap_or(RpcBinaryEncoding::Base58) {
@@ -186,7 +197,7 @@ impl SolanaDebuggerRpcImpl {
 
 		match ledger.execute_instructions(
 			ixs,
-			DebugLedgerAccountReturnChoice::Only(config.accounts.addresses.clone()),
+			DebugLedgerAccountReturnChoice::Only(config_account_addresses.clone()),
 			false
 		).await {
 			Ok((states, logs)) => {
@@ -196,7 +207,7 @@ impl SolanaDebuggerRpcImpl {
 						value: RpcSimulateTransactionResponseValue {
 							err: None,
 							logs: Some(logs),
-							accounts: Some(config.accounts.addresses.iter().map(|pubkey| {
+							accounts: Some(config_account_addresses.iter().map(|pubkey| {
 								let state = states.get(pubkey).unwrap();
 								RpcSimulateTransactionResponseAccounts{
 									lamports: state.lamports,
@@ -260,10 +271,10 @@ impl SolanaDebuggerRpcImpl {
 // Note that the trait name we use is `MyRpcServer`, not `MyRpc`!
 #[async_trait]
 impl SolanaDebuggerRpcServer for SolanaDebuggerRpcImpl {
-	async fn get_account_info(&self, pubkey: Pubkey, config: Option<RpcGetAccountInfoRequest>) -> RpcResult<RpcGetAccountInfoResponse> {
+	async fn get_account_info(&self, pubkey: String, config: Option<RpcGetAccountInfoRequest>) -> RpcResult<RpcGetAccountInfoResponse> {
 		Ok(self._get_account_info(pubkey, config).await?)
 	}
-	async fn get_balance(&self, pubkey: Pubkey, config: Option<RpcGetBalanceRequest>) -> RpcResult<RpcGetBalanceResponse> {
+	async fn get_balance(&self, pubkey: String, config: Option<RpcGetBalanceRequest>) -> RpcResult<RpcGetBalanceResponse> {
 		Ok(self._get_balance(pubkey, config).await?)
 	}
 	async fn get_min_balance_for_rent_exemption(&self, size: u64, config: Option<RpcGenericConfigRequest>) -> RpcResult<u64> {

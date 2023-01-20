@@ -234,7 +234,9 @@ impl SolanaDebugContext {
 		self.nonce
 	}
 }
-pub(crate) fn execute_sol_program_thread(
+/// Spawns a new thread and runs entrypoint in that thread
+/// Does not await until the new thread is finished, await is only used to properly use the RwLock
+pub(crate) async fn execute_sol_program_thread(
 	nonce: u64,
 	blob: Arc<RwLock<SolanaAccountsBlob>>,
 	comm: Arc<Mutex<IPCComm>>,
@@ -245,25 +247,31 @@ pub(crate) fn execute_sol_program_thread(
 		// deadlock ourselves as we'd never be able to update the account data.
 		let blob_ptr = {
 			// And so, we're bypassing the RwLock to make that happen.
-			blob.blocking_read().bytes.as_ptr() as usize
+			blob.read().await.bytes.as_ptr() as usize
 		};
 		// spawning a thread is used cuz invoke is a blocking method
 
 		thread::spawn(move || {
 			// A thread to watch a thread that might panic
 			let result = thread::spawn(move || {
+				println!("DEBUG: execute_sol_program_thread: inner thread started");
 				extern "C" {
 					// Yep, that's it. We just statically link with whatever function is called "entrypoint"
 					fn entrypoint(input: *mut u8) -> u64;
 				}
-				unsafe {
+				let result = unsafe {
 					entrypoint(blob_ptr as *mut u8)
-				}
+				};
+				println!("DEBUG: execute_sol_program_thread: inner thread finished");
+				result
 			}).join();
+			println!("DEBUG: execute_sol_program_thread: Finished entrypoint call");
 			let mut comm = comm.blocking_lock();
+			println!("DEBUG: execute_sol_program_thread: locked comms");
 			context_drop_notifier.blocking_send(
 				DebugValidatorSyscallMsg::PopContext
 			).expect("mpsc::Sender to not fail");
+			println!("DEBUG: execute_sol_program_thread: sent pop context");
 			let account_datas = blob.blocking_read().get_account_datas();
 			match result {
 				Ok(return_code) => {
@@ -301,5 +309,6 @@ pub(crate) fn execute_sol_program_thread(
 					).expect("encoding to not fail");
 				},
 			}
+			println!("DEBUG: execute_sol_program_thread: send result over comms");
 		});
 }

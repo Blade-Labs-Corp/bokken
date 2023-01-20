@@ -3,7 +3,7 @@ use std::{sync::{atomic::{AtomicU64, AtomicBool, Ordering}, Arc}, collections::H
 use async_recursion::async_recursion;
 use color_eyre::eyre;
 use solana_debug_runtime::{ipc_comm::IPCComm, debug_env::{DebugValidatorMessage, DebugRuntimeMessage, DebugAccountData, BorshAccountMeta}};
-use solana_sdk::{pubkey::Pubkey, transaction::TransactionError, system_program};
+use solana_sdk::{pubkey::Pubkey, transaction::TransactionError, system_program, program_error::ProgramError};
 use tokio::{net::UnixListener, task, sync::{Mutex, watch}, time::sleep};
 
 use crate::{error::DebugValidatorError, native_program_stubs::{NativeProgramStub, system_program::DebugSystemProgram}};
@@ -187,11 +187,14 @@ impl ProgramCaller {
 		if let Some(native_program) = self.native_programs.get_mut(&program_id) {
 			let mut account_datas = account_datas;
 			native_program.clear_logs();
+			native_program.logs_mut().push(format!("Program {} invoke [{}]", program_id, call_depth));
 			match native_program.exec(instruction, account_metas, &mut account_datas) 	{
 				Ok(_) => {
+					native_program.logs_mut().push(format!("Program {} success", program_id));
 					return Ok((0, native_program.logs().clone(), account_datas));
 				},
 				Err(err) => {
+					native_program.logs_mut().push(format!("Program {} returned: {}", program_id, err));
 					return Ok((err.into(), native_program.logs().clone(), account_datas));
 				},
 			}
@@ -224,11 +227,18 @@ impl ProgramCaller {
 					return_code,
 					account_datas
 				} => {
-					let mut exec_logs = self.exec_logs.lock().await;
+					let mut exec_logs = self.exec_logs.lock().await.remove(&nonce).unwrap_or_default();
 						println!("TODO: Make sure lamports didn't get magically created or vanish");
 						println!("TODO: Also make sure that the program only edited accounts that it has access to edit");
 						println!("TODO: Maybe this could be done on the child process? (cuz CPI)");
-						return Ok((return_code, exec_logs.remove(&nonce).unwrap_or_default(), account_datas));
+					// This is a terrible hack
+					exec_logs.insert(0, format!("Program {} invoke [{}]", program_id, call_depth));
+					if return_code == 0 {
+						exec_logs.push(format!("Program {} success", program_id));
+					}else{
+						exec_logs.push(format!("Program {} returned: {}", program_id, ProgramError::from(return_code)));
+					}
+					return Ok((return_code, exec_logs, account_datas));
 				},
 				ProgramCallerExecStatus::CPI {
 					program_id: sub_program_id,

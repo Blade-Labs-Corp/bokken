@@ -87,7 +87,7 @@ pub struct RpcGetAccountInfoResponse {
 #[serde(rename_all = "camelCase")]
 pub struct RpcGetAccountInfoResponseValue {
 	pub lamports: u64,
-	pub owner: Pubkey,
+	pub owner: String,
 	pub data: RPCBinaryEncodedString,
 	pub executable: bool,
 	pub rent_epoch: u64
@@ -180,7 +180,7 @@ pub struct RpcSimulateTransactionRequest {
 #[serde(rename_all = "camelCase")]
 pub struct RpcSimulateTransactionRequestAccounts {
 	pub encoding: RpcBinaryEncoding,
-	pub addresses: Vec<Pubkey>
+	pub addresses: Vec<String>
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]

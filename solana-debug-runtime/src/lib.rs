@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::{Arc, atomic::{AtomicBool, Ordering}}, collections::{HashSet, HashMap}, thread::JoinHandle};
+use std::{path::PathBuf, sync::{Arc, atomic::{AtomicBool, Ordering}}, collections::{HashSet, HashMap}, thread::JoinHandle, time::Duration};
 
 use color_eyre::eyre;
 use debug_env::{DebugValidatorMessage, DebugRuntimeMessage, DebugAccountData};
@@ -7,7 +7,7 @@ use ipc_comm::IPCComm;
 use sol_syscalls::{DebugValidatorSyscalls, DebugValidatorSyscallMsg};
 use solana_program::{pubkey::Pubkey, program_stubs::set_syscall_stubs};
 use bpaf::Bpaf;
-use tokio::{net::UnixStream, sync::{Mutex, mpsc}, task, join};
+use tokio::{net::UnixStream, sync::{Mutex, mpsc}, task, join, time::sleep};
 
 
 pub mod sol_syscalls;
@@ -34,7 +34,20 @@ async fn ipc_read_loop(
 	syscall_sender: mpsc::Sender<DebugValidatorSyscallMsg>,
 	invoke_result_senders: Arc<Mutex<HashMap<u64, mpsc::Sender<(u64, HashMap<Pubkey, DebugAccountData>)>>>>
 ) -> eyre::Result<()> {
-	while let Some(msg) = comm.lock().await.until_recv_msg::<DebugValidatorMessage>().await? {
+	loop {
+		// We must poll or else we prevent Logs and CPIs from getting sent
+		let msg = {
+			let mut comm = comm.lock().await;
+			if comm.stopped() {
+				break;
+			}
+			if let Some(msg) = comm.recv_msg().await? {
+				msg
+			}else{
+				sleep(Duration::from_millis(1)).await;
+				continue;
+			}
+		};
 		match msg {
 			DebugValidatorMessage::Invoke {
 				nonce,

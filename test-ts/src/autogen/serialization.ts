@@ -87,7 +87,17 @@ type TestProgramInstruction_IncrementNumber = {
 	_enum: "IncrementNumber"
 	amount: bigint;
 };
-export type TestProgramInstruction = TestProgramInstruction_HelloWorld | TestProgramInstruction_IncrementNumber;
+type TestProgramInstruction_RecurseThenIncrementNumber = {
+	_enum: "RecurseThenIncrementNumber"
+	callDepth: number;
+	amount: bigint;
+};
+export type TestProgramInstruction = TestProgramInstruction_HelloWorld | TestProgramInstruction_IncrementNumber | TestProgramInstruction_RecurseThenIncrementNumber;
+
+export type TestProgramState = {
+	property1: bigint;
+	property2: bigint;
+};
 
 export namespace encode {
 	export function TestProgramInstruction(obj: TestProgramInstruction, curBuf: (Buffer | undefined) = Buffer.allocUnsafe(1), i: (number | undefined) = 0): [Buffer, number] {
@@ -104,9 +114,34 @@ export namespace encode {
 				curBuf.writeBigUInt64LE((obj as any).amount, i);
 				i += 8;
 				break;
+			case "RecurseThenIncrementNumber":
+				curBuf[i++] = 2;
+				bufs.push(curBuf);
+				totalLen += curBuf.length;
+				curBuf = Buffer.allocUnsafe(9); i = 0;
+				curBuf[i++] = (obj as any).callDepth;
+				curBuf.writeBigUInt64LE((obj as any).amount, i);
+				i += 8;
+				break;
 			default:
 				throw new Error("Unknown enum type");
 		}
+		if (!bufs.length) {
+			return [curBuf!, i!];
+		}
+		if (curBuf != null) {
+			bufs.push(curBuf);
+			totalLen += curBuf.length;
+		}
+		return [Buffer.concat(bufs, totalLen), 0];
+	}
+
+	export function TestProgramState(obj: TestProgramState, curBuf: Buffer = Buffer.allocUnsafe(16), i: number = 0): [Buffer, number] {
+		let bufs: Buffer[] = []; let totalLen = 0;
+		curBuf.writeBigUInt64LE(obj.property1, i);
+		i += 8;
+		curBuf.writeBigUInt64LE(obj.property2, i);
+		i += 8;
 		if (!bufs.length) {
 			return [curBuf!, i!];
 		}
@@ -134,9 +169,36 @@ export namespace decode {
 					return subResult;
 				})();
 				break;
+			case 2:
+				result = {};
+				result._enum = "RecurseThenIncrementNumber";
+				result.callDepth = (() => {
+					return buf[i++];
+				})();
+				result.amount = (() => {
+					const subResult = buf.readBigUInt64LE(i);
+					i += 8;
+					return subResult;
+				})();
+				break;
 			default:
 				throw new Error("Unknown enum type");
 		}
+		return [result, buf.subarray(i)];
+	}
+
+	export function TestProgramState(buf: Buffer): [TestProgramState, Buffer] {
+		let result: any = {}; let i = 0;
+		result.property1 = (() => {
+			const subResult = buf.readBigUInt64LE(i);
+			i += 8;
+			return subResult;
+		})();
+		result.property2 = (() => {
+			const subResult = buf.readBigUInt64LE(i);
+			i += 8;
+			return subResult;
+		})();
 		return [result, buf.subarray(i)];
 	}
 
@@ -145,6 +207,9 @@ export namespace sizeOf {
 	export namespace TestProgramInstruction {
 		export const HelloWorld = 1;
 		export const IncrementNumber = 9;
+		export const RecurseThenIncrementNumber = 10;
 	};
+
+	export const TestProgramState = 16;
 
 };
