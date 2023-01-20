@@ -132,6 +132,7 @@ impl SolanaDebuggerRpcImpl {
 		}).collect();
 
 		let _ = ledger.execute_instructions(
+			&tx.message.account_keys[0],
 			ixs,
 			BokkenLedgerAccountReturnChoice::None,
 			true
@@ -196,6 +197,7 @@ impl SolanaDebuggerRpcImpl {
 		}).collect();
 
 		match ledger.execute_instructions(
+			&tx.message.account_keys[0],
 			ixs,
 			BokkenLedgerAccountReturnChoice::Only(config_account_addresses.clone()),
 			false

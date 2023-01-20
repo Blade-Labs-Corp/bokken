@@ -23,6 +23,18 @@ async function printSimulatedIxThenSend(connection: Connection, ix: TransactionI
 		)
 	);
 }
+async function printAccountInfo(connection: Connection, account: PublicKey ) {
+	console.log("--", account.toBase58(), "info --")
+	const accountInfo = await connection.getAccountInfo(account);
+	console.log(
+		inspect(
+			accountInfo,
+			false,
+			Infinity,
+			true
+		)
+	)
+}
 async function printStateAccountInfo(connection: Connection, programState: PublicKey ) {
 	console.log("--", programState.toBase58(), "info --")
 	const accountInfo = await connection.getAccountInfo(programState);
@@ -85,6 +97,7 @@ async function printStateAccountInfo(connection: Connection, programState: Publi
 			}),
 			[testKeypair]
 		);
+		await printAccountInfo(connection, testKeypair.publicKey);
 		await printStateAccountInfo(connection, programState);
 		console.log("-- inc number --");
 		await printSimulatedIxThenSend(
@@ -92,6 +105,7 @@ async function printStateAccountInfo(connection: Connection, programState: Publi
 			TestProgramInstructionBuilder.buildIncrementNumberIx(programId, programState, 1337n),
 			[testKeypair]
 		);
+		await printAccountInfo(connection, testKeypair.publicKey);
 		await printStateAccountInfo(connection, programState);
 		console.log("-- inc number again --");
 		await printSimulatedIxThenSend(
@@ -99,6 +113,7 @@ async function printStateAccountInfo(connection: Connection, programState: Publi
 			TestProgramInstructionBuilder.buildIncrementNumberIx(programId, programState, 1337n),
 			[testKeypair]
 		);
+		await printAccountInfo(connection, testKeypair.publicKey);
 		await printStateAccountInfo(connection, programState);
 	}catch(ex: any) {
 		if (Array.isArray(ex.logs)) {

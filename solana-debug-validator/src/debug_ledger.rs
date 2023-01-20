@@ -1,4 +1,4 @@
-use std::{path::PathBuf, collections::HashMap, io};
+use std::{path::PathBuf, collections::{HashMap, HashSet}, io};
 
 use borsh::{BorshSerialize, BorshDeserialize};
 use color_eyre::eyre;
@@ -196,15 +196,22 @@ impl BokkenLedger {
 	}
 	pub async fn execute_instructions(
 		&mut self,
+		fee_payer: &Pubkey,
 		instructions: Vec<BokkenLedgerInstruction>,
 		return_choice: BokkenLedgerAccountReturnChoice,
 		commit_changes: bool
 	) -> Result<(HashMap<Pubkey, BokkenAccountData>, Vec<String>), BokkenError> {
 		let mut the_big_log = Vec::new();
+		let mut unique_sigs = HashSet::new();
+		unique_sigs.insert(fee_payer.clone());
 		let account_datas = {
 			let mut account_datas = HashMap::new();
+			account_datas.insert(fee_payer.clone(), self.read_account(fee_payer).await?);
 			for ix in instructions.iter() {
 				for meta in ix.account_metas.iter() {
+					if meta.is_signer {
+						unique_sigs.insert(meta.pubkey.clone());
+					}
 					if !account_datas.contains_key(&meta.pubkey) {
 						account_datas.insert(meta.pubkey, self.read_account(&meta.pubkey).await?);
 					}
@@ -213,6 +220,18 @@ impl BokkenLedger {
 			account_datas
 		};
 		let mut account_datas_changed = account_datas.clone();
+		{
+			// Take the fee away!
+			let fee_payer = account_datas_changed.get_mut(fee_payer)
+				.expect("For the fee payer data to be where we put it");
+			// sig fee is hard-coded for now
+			// TODO: care about about the 128 bytes for rent
+			fee_payer.lamports = fee_payer.lamports.checked_sub(
+				5000 * unique_sigs.len() as u64
+			).ok_or(TransactionError::InsufficientFundsForFee)?;
+			// fee_payer gets dropped
+		}
+
 		for (i, ix) in instructions.into_iter().enumerate() {
 			let (return_code, logs) = self.execute_instruction(ix, 1, &mut account_datas_changed).await?;
 			the_big_log.extend(logs);
