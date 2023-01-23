@@ -10,7 +10,7 @@ _A Solana program debugging tool_
 
 Well, with the magic of not compiling to SBF (Solana Bytecode Format), your Solana program debugging woes can be washed away!
 
-[GIF Showing step-debugging through Solana Programs]
+![A GIF showing a solana program being step-debugged with with a hilight on struct inspection](https://cdn.discordapp.com/attachments/898958435410915348/1067119876994519040/solana-step-debug-absent-theme.gif)
 
 ## Preamble
 
