@@ -35,7 +35,7 @@ async fn ipc_read_loop(
 	invoke_result_senders: Arc<Mutex<HashMap<u64, mpsc::Sender<(u64, HashMap<Pubkey, BokkenAccountData>)>>>>
 ) -> eyre::Result<()> {
 	loop {
-		// We must poll or else we prevent Logs and CPIs from getting sent
+		// Solana program executions 
 		let msg = {
 			let mut comm = comm.lock().await;
 			if comm.stopped() {
@@ -88,8 +88,11 @@ async fn ipc_read_loop(
 
 pub async fn bokken_runtime_main() -> eyre::Result<()> {
 	let opts = command_options().run();
+	// The actual solana program execution happens in a different thread as all the syscall methods are blocking.
+	// Therefore, IPCComm is in a mutex so it can be shared with BokkenSyscalls for when a log or CPI happens.
 	let comm = Arc::new(Mutex::new(IPCComm::new(UnixStream::connect(opts.socket_path).await?)));
 	{
+		// Send our configured program ID to the main process in order to register it
 		comm.lock().await.send_msg(opts.program_id).await?;
 	}
 	let (syscall_sender, syscall_receiver) = mpsc::channel::<BokkenSyscallMsg>(1);
@@ -100,9 +103,9 @@ pub async fn bokken_runtime_main() -> eyre::Result<()> {
 		invoke_result_senders.clone(),
 		syscall_receiver
 	));
+	// Override default `solana_program` syscalls with our `BokkenSyscalls`
 	set_syscall_stubs(syscall_mgr);
-	println!("DEBUG: bokken_runtime_main: sent program id");
-
+	println!("bokken_runtime_main: Sent program ID, set syscalls, awaiting execution requests...");
 	// TODO: Listen for signals and exit gracefully
 	ipc_read_loop(comm, syscall_sender, invoke_result_senders).await?;
 	Ok(())

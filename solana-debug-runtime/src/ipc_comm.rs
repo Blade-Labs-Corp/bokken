@@ -133,12 +133,12 @@ pub struct IPCComm {
 	recv_notif: watch::Receiver<usize>
 }
 
+/// Simple length-prefixed Borsh-encoded messages
 impl IPCComm {
+	/// Consumes a unix stream for length-prefixed Borsh-encoded communication.
 	pub fn new(
 		stream: UnixStream,
 	) -> Self {
-		// let send_queue = Arc::new(Mutex::new(VecDeque::new()));
-		// et send_queue_clone = send_queue.clone();
 		let recv_queue_bytes_mutex = Arc::new(Mutex::new(VecDeque::new()));
 		let send_queue_bytes_mutex = Arc::new(Mutex::new(VecDeque::new()));
 		let should_stop = Arc::new(AtomicBool::new(false));
@@ -190,12 +190,18 @@ impl IPCComm {
 			recv_notif
 		}
 	}
-	// Waits until I is recievied, will error if the initial message couldn't be decoded
+
+	/// Consumes a unix stream for length-prefixed Borsh-encoded communication.
+	/// 
+	/// Waits until type `I` is received, will error if the initial message couldn't be decoded.
 	pub async fn new_with_identifier<I: BorshDeserialize>(stream: UnixStream) -> Result<(Self, I), io::Error> {
-		let mut sayulf = Self::new(stream);
-		let id = sayulf.until_recv_msg().await?.ok_or(io::Error::from(io::ErrorKind::UnexpectedEof))?;
-		Ok((sayulf, id))
+		let mut new_self = Self::new(stream);
+		let id = new_self.until_recv_msg().await?.ok_or(io::Error::from(io::ErrorKind::UnexpectedEof))?;
+		Ok((new_self, id))
 	}
+
+	/// Adds the provided message to a queue for sending over the underlying connection, but does not wait until
+	/// the message is actually sent
 	pub async fn send_msg<S: BorshSerialize>(&mut self, msg: S) -> Result<(), io::Error> {
 		let msg_bytes = msg.try_to_vec()?;
 		let mut send_queue_bytes = self.send_queue_bytes.lock().await;
@@ -203,6 +209,9 @@ impl IPCComm {
 		send_queue_bytes.push_back(msg_bytes);
 		Ok(())
 	}
+
+	/// Adds the provided message to a queue for sending over the underlying connection, but does not block until
+	/// the message is actually sent
 	pub fn blocking_send_msg<S: BorshSerialize>(&mut self, msg: S) -> Result<(), io::Error> {
 		let msg_bytes = msg.try_to_vec()?;
 		let mut send_queue_bytes = self.send_queue_bytes.blocking_lock();
@@ -210,7 +219,9 @@ impl IPCComm {
 		send_queue_bytes.push_back(msg_bytes);
 		Ok(())
 	}
-	/// Results in None if thereare no messages in the incoming message queue
+
+	/// Removes and parses a message received messages queue.
+	/// If there are no pending messages, None is returned.
 	pub async fn recv_msg<R: BorshDeserialize>(&mut self) -> Result<Option<R>, io::Error> {
 		let mut recv_queue_bytes = self.recv_queue_bytes.lock().await;
 		match recv_queue_bytes.pop_front() {
@@ -220,7 +231,10 @@ impl IPCComm {
 			None => Ok(None),
 		}
 	}
-	// Wait until there's a message to be received. Results in None if the read stream has been shut down
+	
+	/// Removes and parses a message received messages queue.
+	/// If there are no pending messages, this function waits until there is one.
+	/// If the underlying connection is closed before a message could be received, None is returned.
 	pub async fn until_recv_msg<R: BorshDeserialize>(&mut self) -> Result<Option<R>, io::Error> {
 		loop {
 			if self.should_stop.load(Ordering::Relaxed) {
@@ -229,15 +243,21 @@ impl IPCComm {
 			if let Some(msg) = self.recv_msg::<R>().await? {
 				return Ok(Some(msg));
 			}
-			self.recv_notif.changed().await.expect("Recever shouldn't drop without sending a message first");
+			self.recv_notif.changed().await.expect("Receiver shouldn't drop without sending a message first");
 		}
 	}
+
+	/// Checks if the underlying connection is closed
 	pub fn stopped(&self) -> bool {
 		self.should_stop.load(Ordering::Relaxed)
 	}
+	
+	/// Stops parsing received messages
 	pub fn stop(&self) {
 		self.should_stop.store(true, Ordering::Relaxed);
 	}
+
+	/// Waits until the read/write tasks are stopped
 	pub async fn wait_until_stopped(self) {
 		self.write_handle.await.unwrap();
 		self.read_handle.await.unwrap();

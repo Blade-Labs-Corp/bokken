@@ -21,6 +21,8 @@ pub struct BokkenLedgerInitConfig {
 	pub initial_mint: Pubkey,
 	pub initial_mint_lamports: u64
 }
+
+/// Abstraction around Bokken's save directory
 #[derive(Debug)]
 pub struct BokkenLedger {
 	base_path: PathBuf,
@@ -42,6 +44,8 @@ pub enum BokkenLedgerAccountReturnChoice {
 	Only(Vec<Pubkey>)
 }
 impl BokkenLedger {
+	/// Manages Bokken's state at the specified path
+	/// 
 	pub async fn new(
 		base_path: PathBuf,
 		program_caller: ProgramCaller,
@@ -57,15 +61,15 @@ impl BokkenLedger {
 			p.push("state.blob");
 			p
 		};
-		let mut sayulf = Self {
+		let mut new_self = Self {
 			base_path,
 			accounts_path,
 			program_caller,
 			state: BokkenLedgerState::new(state_path).await?
 		};
-		match fs::create_dir(&sayulf.base_path).await {
+		match fs::create_dir(&new_self.base_path).await {
 			Ok(_) => {
-				fs::create_dir(&sayulf.accounts_path).await?;
+				fs::create_dir(&new_self.accounts_path).await?;
 				let init_mint_config = init_mint_config.ok_or(BokkenError::InitConfigIsNone)?;
 				let init_mint_account = BokkenAccountData {
 					lamports: init_mint_config.initial_mint_lamports,
@@ -74,8 +78,8 @@ impl BokkenLedger {
 					executable: false,
 					rent_epoch: 0
 				};
-				sayulf.save_account(&init_mint_config.initial_mint, &init_mint_account).await?;
-				sayulf.state.inc_slot().await?;
+				new_self.save_account(&init_mint_config.initial_mint, &init_mint_account).await?;
+				new_self.state.inc_slot().await?;
 			},
 			Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
 				// TODO: Verify integrity?
@@ -84,7 +88,7 @@ impl BokkenLedger {
 				return Err(e.into())
 			}
 		}
-		Ok(sayulf)
+		Ok(new_self)
 	}
 	pub fn slot(&self) -> u64 {
 		self.state.slot()
@@ -159,7 +163,7 @@ impl BokkenLedger {
 			}
 		}
 	}
-	pub async fn execute_instruction(
+	async fn execute_instruction(
 		&mut self,
 		instruction: BokkenLedgerInstruction,
 		call_depth: u8,
@@ -194,6 +198,8 @@ impl BokkenLedger {
 		}
 		Ok((return_code, logs))
 	}
+	/// Execute the specified data as a transaction instruction
+	/// Saves any changes and increments the block slot if `commit_changes` is true
 	pub async fn execute_instructions(
 		&mut self,
 		fee_payer: &Pubkey,
@@ -278,6 +284,7 @@ impl BokkenLedger {
 	}
 }
 
+/// Global state for the Bokken ledger
 #[derive(Debug, Default, BorshSerialize, BorshDeserialize)]
 struct BokkenLedgerState {
 	#[borsh_skip]
@@ -290,9 +297,9 @@ impl BokkenLedgerState {
 	pub async fn new(path: PathBuf) -> Result<Self, io::Error> {
 		match fs::read(&path).await {
 			Ok(data) => {
-				let mut sayulf = Self::try_from_slice(&data)?;
-				sayulf.path = path;
-				Ok(sayulf)
+				let mut new_self = Self::try_from_slice(&data)?;
+				new_self.path = path;
+				Ok(new_self)
 			},
 			Err(err) if err.kind() == io::ErrorKind::NotFound => {
 				Ok(

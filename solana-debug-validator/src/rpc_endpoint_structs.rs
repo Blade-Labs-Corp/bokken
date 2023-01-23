@@ -1,3 +1,5 @@
+use crate::error::BokkenError;
+
 
 
 // start-common
@@ -6,8 +8,29 @@
 pub enum RpcBinaryEncoding {
 	Base64,
 	Base58,
+	#[serde(rename = "base64+zstd")]
+	Base64Compressed
 	// #[serde(rename = "jsonParsed")]
 	// JsonParsed
+}
+impl RpcBinaryEncoding {
+	pub fn decode_bytes(&self, data: &String) -> Result<Vec<u8>, BokkenError> {
+		match self {
+			RpcBinaryEncoding::Base58 => {
+				Ok(bs58::decode(data).into_vec()?)
+			}
+			RpcBinaryEncoding::Base64 => {
+				Ok(base64::decode(data)?)
+			}
+			RpcBinaryEncoding::Base64Compressed => {
+				Ok(
+					zstd::decode_all(
+						base64::decode(data)?.as_slice()
+					)?
+				)
+			},
+		}
+	}
 }
 impl Default for RpcBinaryEncoding {
 	fn default() -> Self {
@@ -21,6 +44,14 @@ impl RPCBinaryEncodedString {
 	pub fn from_bytes(data: &[u8], encoding: RpcBinaryEncoding) -> Self {
 		Self(
 			match &encoding {
+				RpcBinaryEncoding::Base64Compressed => {
+					base64::encode(
+						zstd::encode_all(
+							data,
+							0
+						).expect("zstd to not fail")
+					)
+				},
 				RpcBinaryEncoding::Base64 => {
 					base64::encode(data)
 				},

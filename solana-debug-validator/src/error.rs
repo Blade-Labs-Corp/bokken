@@ -8,7 +8,7 @@ pub enum BokkenError {
 	ShouldNotHappen,
 	#[error("IO Error: {0}")]
 	IO(#[from] io::Error),
-	#[error("Initialization config must be given when initializing")]
+	#[error("All initialization options must be specified if a pre-existing state doesn't exist at the path provided")]
 	InitConfigIsNone,
 	#[error("this feature is unimplemented")]
 	Unimplemented,

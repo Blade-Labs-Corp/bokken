@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use debug_ledger::BokkenLedgerInitConfig;
 use program_caller::ProgramCaller;
 
+use solana_sdk::pubkey::Pubkey;
 use solana_sdk::{pubkey};
 use color_eyre::eyre::Result;
 use tokio::net::UnixListener;
@@ -45,7 +46,16 @@ struct CommandOptions {
 	/// JSON-RPC IP port to listen to
 	/// (Default: 8899)
 	#[bpaf(short('p'), long, argument::<u16>("PORT"), fallback(8899))]
-	listen_port: u16
+	listen_port: u16,
+
+	/// If save-path doesn't already exist, initialize the following account with `initial-mint-lamports`
+	#[bpaf(short('m'), long, argument::<Pubkey>("PUBKEY"))]
+	initial_mint_pubkey: Option<Pubkey>,
+
+	/// Amount to initialize `initial-mint-pubkey` with if save-path doesn't already exist
+	/// (Default: 500000000000000000)
+	#[bpaf(short('M'), long, argument::<u64>("LAMPORTS"), fallback(500000000000000000))]
+	initial_mint_lamports: u64
 }
 
 #[tokio::main]
@@ -58,9 +68,11 @@ async fn main() -> Result<()> {
 	let ledger = BokkenLedger::new(
 		opts.save_path,
 		ProgramCaller::new(ipc_listener),
-		Some(BokkenLedgerInitConfig {
-			initial_mint: pubkey!("2iXtA8oeZqUU5pofxK971TCEvFGfems2AcDRaZHKD2pQ"),
-			initial_mint_lamports: 10000000000000000
+		opts.initial_mint_pubkey.map(|pubkey| {
+			BokkenLedgerInitConfig {
+				initial_mint: pubkey,
+				initial_mint_lamports: opts.initial_mint_lamports
+			}
 		})
 	).await?;
 	

@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use borsh::{BorshSerialize, BorshDeserialize};
 use solana_program::{pubkey::Pubkey, instruction::AccountMeta, program_error::ProgramError};
 
+/// The structure used to store a Solana account's information
 #[derive(PartialEq, Eq, Debug, Clone, BorshSerialize, BorshDeserialize, Default)]
 pub struct BokkenAccountData {
 	// pub pubkey: Pubkey,
@@ -23,6 +24,7 @@ impl BokkenAccountData {
 	}
 }
 
+/// Same as Solana's own `AccountMeta`, except this implements `BorshSerialize` and `BorshDeserialize`
 #[derive(Debug, Default, PartialEq, Clone, BorshSerialize, BorshDeserialize)]
 pub struct BorshAccountMeta {
     /// An account's public key.
@@ -60,6 +62,8 @@ impl From<BorshAccountMeta> for AccountMeta {
 	}
 }
 
+
+/// IPC message sent from a debuggable program to the main Bokken process.
 #[derive(Debug, BorshSerialize, BorshDeserialize)]
 pub enum BokkenRuntimeMessage {
 	Log {
@@ -81,7 +85,7 @@ pub enum BokkenRuntimeMessage {
 	}
 }
 
-
+/// IPC message send from the main Bokken process to a debuggable program
 #[derive(Debug, BorshSerialize, BorshDeserialize)]
 pub enum BokkenValidatorMessage {
 	Invoke {

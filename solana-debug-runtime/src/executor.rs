@@ -10,14 +10,8 @@ use solana_program::{
 use tokio::{sync::{Mutex, RwLock, mpsc}};
 
 use crate::{debug_env::{BokkenAccountData, BokkenRuntimeMessage}, ipc_comm::IPCComm, sol_syscalls::BokkenSyscallMsg};
-// use lazy_static::lazy_static;
 
-
-
-/// Maximum number of bytes a program may add to an account during a single realloc
-//pub const MAX_PERMITTED_DATA_INCREASE: usize = 1_024 * 10;
-
-
+/// Raw header data for the `SolanaAccountsBlob`
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Zeroable, Pod)]
 #[repr(C)]
 pub(crate) struct AccountInfoHeader {
@@ -43,13 +37,15 @@ impl AccountInfoHeader {
 	}
 }
 
-
+/// An instance of multiple Solana `AccountInfo`s, structured in a manner which the `solana_program`'s entrypoint
+/// parser expects.
 #[derive(Debug)]
 pub(crate) struct SolanaAccountsBlob {
 	pub account_offsets: HashMap<Pubkey, usize>,
 	pub bytes: Vec<u8>
 }
 impl SolanaAccountsBlob {
+	/// Creates a new instance of solana account data with the information provided
 	pub fn new(
 		program_id: Pubkey,
 		instruction: Vec<u8>,
@@ -98,6 +94,10 @@ impl SolanaAccountsBlob {
 			account_offsets
 		}
 	}
+
+	/// Returns a copy of the account info associated with the specified pubkey
+	/// 
+	/// Returns None if the account doesn't exist in this context.
 	pub fn get_account_data(&self, pubkey: &Pubkey) -> Option<BokkenAccountData> {
 		if let Some(account_offset) = self.account_offsets.get(pubkey) {
 			let account_data_offset = *account_offset + std::mem::size_of::<AccountInfoHeader>();
@@ -121,6 +121,8 @@ impl SolanaAccountsBlob {
 			None
 		}
 	}
+
+	/// Edits the account data accessible by the solana program with the data provided
 	pub fn set_account_data(&mut self, pubkey: &Pubkey, account_data: BokkenAccountData) -> Result<(), ProgramError> {
 		if let Some(account_offset) = self.account_offsets.get(pubkey) {
 			let account_data_offset = *account_offset + std::mem::size_of::<AccountInfoHeader>();
@@ -144,6 +146,8 @@ impl SolanaAccountsBlob {
 			Err(ProgramError::UninitializedAccount)
 		}
 	}
+
+	/// Retrieves a reference to the account data header
 	pub fn get_account_data_header(&self, pubkey: &Pubkey) -> Option<&AccountInfoHeader> {
 		if let Some(account_offset) = self.account_offsets.get(pubkey) {
 			let account_data_offset = *account_offset + std::mem::size_of::<AccountInfoHeader>();
@@ -155,6 +159,8 @@ impl SolanaAccountsBlob {
 			None
 		}
 	}
+
+	/// Whether or not the specified account is writable
 	pub fn is_writable(&self, pubkey: &Pubkey) -> bool {
 		if let Some(account_header) = self.get_account_data_header(pubkey) {
 			account_header.is_writable() && !account_header.executable()
@@ -162,6 +168,8 @@ impl SolanaAccountsBlob {
 			false
 		}
 	}
+
+	/// Whether or not the specified account is a signer
 	pub fn is_signer(&self, pubkey: &Pubkey) -> bool {
 		if let Some(account_header) = self.get_account_data_header(pubkey) {
 			account_header.is_signer()
@@ -170,6 +178,7 @@ impl SolanaAccountsBlob {
 		}
 	}
 
+	/// Gets all the account information stored in this context
 	pub fn get_account_datas(&self) -> HashMap<Pubkey, BokkenAccountData> {
 		let mut result = HashMap::new();
 		for pubkey in self.account_offsets.keys() {
@@ -182,7 +191,7 @@ impl SolanaAccountsBlob {
 	}
 }
 
-
+/// Execution context used for `BokkenSyscalls`
 #[derive(Debug)]
 pub(crate) struct BokkenSolanaContext {
 	// executed: bool,
@@ -234,8 +243,12 @@ impl BokkenSolanaContext {
 		self.nonce
 	}
 }
-/// Spawns a new thread and runs entrypoint in that thread
+
+/// Spawns a new thread to execute the Solana program in.
+/// 
 /// Does not await until the new thread is finished, await is only used to properly use the RwLock
+/// After the program execution has finished, `comm` is used to notify the main process of the results, and
+/// `context_drop_notifier` is used to notify `BokkenSyscalls` to pop the context.
 pub(crate) async fn execute_sol_program_thread(
 	nonce: u64,
 	blob: Arc<RwLock<SolanaAccountsBlob>>,
@@ -249,29 +262,27 @@ pub(crate) async fn execute_sol_program_thread(
 			// And so, we're bypassing the RwLock to make that happen.
 			blob.read().await.bytes.as_ptr() as usize
 		};
-		// spawning a thread is used cuz invoke is a blocking method
-
+		
+		// All Solana syscalls methods, including invoke, log, are all blocking. So we spawn another thread in order
+		// to avoid deadlocking ourselves.
 		thread::spawn(move || {
-			// A thread to watch a thread that might panic
+			// Solana programs might panic for any reason. So we spawn yet another thread in order to catch any
+			// potential panics.
 			let result = thread::spawn(move || {
-				println!("DEBUG: execute_sol_program_thread: inner thread started");
 				extern "C" {
-					// Yep, that's it. We just statically link with whatever function is called "entrypoint"
+					// The entrypoint macro provided by `solana_program` simply exports a C function called
+					// `entrypoint`. This is how we call upon the provided solana program.
 					fn entrypoint(input: *mut u8) -> u64;
 				}
 				let result = unsafe {
 					entrypoint(blob_ptr as *mut u8)
 				};
-				println!("DEBUG: execute_sol_program_thread: inner thread finished");
 				result
 			}).join();
-			println!("DEBUG: execute_sol_program_thread: Finished entrypoint call");
 			let mut comm = comm.blocking_lock();
-			println!("DEBUG: execute_sol_program_thread: locked comms");
 			context_drop_notifier.blocking_send(
 				BokkenSyscallMsg::PopContext
 			).expect("mpsc::Sender to not fail");
-			println!("DEBUG: execute_sol_program_thread: sent pop context");
 			let account_datas = blob.blocking_read().get_account_datas();
 			match result {
 				Ok(return_code) => {
@@ -309,6 +320,5 @@ pub(crate) async fn execute_sol_program_thread(
 					).expect("encoding to not fail");
 				},
 			}
-			println!("DEBUG: execute_sol_program_thread: send result over comms");
 		});
 }

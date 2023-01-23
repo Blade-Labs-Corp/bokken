@@ -15,8 +15,10 @@ pub(crate) enum BokkenSyscallMsg {
 	PopContext
 }
 
-/// I'm making a big assumption that the paren't process isn't attempting to run this program in parralel.
-/// But I do want to handle self-recursing calls
+/// Syscall replacements for the `solana_program` crate, with support for recursive invocations.
+/// 
+/// This does not support multiple instances of the same solana program executing in parallel. There should be only
+/// once instance undergoing active execution at a time.
 #[derive(Debug)]
 pub(crate) struct BokkenSyscalls {
 	ipc: Arc<Mutex<IPCComm>>,
@@ -27,6 +29,13 @@ pub(crate) struct BokkenSyscalls {
 	contexts: Arc<Mutex<Vec<BokkenSolanaContext>>>,
 }
 impl BokkenSyscalls {
+
+	/// Creates an instance of `BokkenSyscalls`
+	/// 
+	/// * `ipc` Used for sending log messages and CPI requests
+	/// * `program_id` Our program ID
+	/// * `invoke_result_senders` Where the main IPC Read loop can put its CPI results while we wait for them
+	/// * `msg_receiver` For receiving new execution contexts
 	pub fn new(
 		ipc: Arc<Mutex<IPCComm>>,
 		program_id: Pubkey,
@@ -51,20 +60,6 @@ impl BokkenSyscalls {
 				}
 			}
 		});
-		/* 
-		thread::spawn(async move {
-			while let Some(msg) = msg_receiver.recv().await {
-				match msg {
-					BokkenSyscallMsg::PushContext { ctx } => {
-						context_values_clone.lock().await.push(ctx);
-					},
-					BokkenSyscallMsg::PopContext => {
-						context_values_clone.lock().await.pop();
-					},
-				}
-			}
-		});
-		*/
 		Self {
 			ipc,
 			program_id,

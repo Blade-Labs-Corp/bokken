@@ -62,6 +62,7 @@ impl SolanaDebuggerRpcImpl {
 			RpcGetAccountInfoResponse {
 				context: RpcResponseContext { slot: ledger.slot() },
 				value: if data.lamports == 0 {
+					/// BokkenLedger returns fake data if the account doesn't exist, but we'll just return none here
 					None
 				}else{
 					Some(
@@ -95,16 +96,11 @@ impl SolanaDebuggerRpcImpl {
 	) -> Result<String, BokkenError> {
 		let config = config.unwrap_or_default();
 		// tx encoding has a default encoding type compared to everything else, woohoo!
-		let tx: Transaction = bincode::deserialize(&match config.encoding.unwrap_or(RpcBinaryEncoding::Base58) {
-			RpcBinaryEncoding::Base58 => {
-				bs58::decode(tx_data).into_vec()?
-			}
-			RpcBinaryEncoding::Base64 => {
-				base64::decode(tx_data)?
-			}
-		})?;
+		let tx: Transaction = bincode::deserialize(
+			&config.encoding.unwrap_or(RpcBinaryEncoding::Base58).decode_bytes(&tx_data)?
+		)?;
 
-		// Verify the message isn't garbage
+		// Verify the message isn't garbage. Note how "skip preflight" is ignored. Either we succeeded or we don't.
 		tx.sanitize()?;
 		tx.verify()?;
 
@@ -137,6 +133,7 @@ impl SolanaDebuggerRpcImpl {
 			BokkenLedgerAccountReturnChoice::None,
 			true
 		).await?;
+		// The documented response is to just reply with the tx signature, so we just do that
 		Ok(bs58::encode(tx.signatures[0]).into_string())
 	}
 	async fn _simulate_transaction(
@@ -155,14 +152,9 @@ impl SolanaDebuggerRpcImpl {
 			
 		
 		// tx encoding has a default encoding type compared to everything else, woohoo!
-		let tx: Transaction = bincode::deserialize(&match config.encoding.unwrap_or(RpcBinaryEncoding::Base58) {
-			RpcBinaryEncoding::Base58 => {
-				bs58::decode(tx_data).into_vec()?
-			}
-			RpcBinaryEncoding::Base64 => {
-				base64::decode(tx_data)?
-			}
-		})?;
+		let tx: Transaction = bincode::deserialize(
+			&config.encoding.unwrap_or(RpcBinaryEncoding::Base58).decode_bytes(&tx_data)?
+		)?;
 
 		// Verify the message isn't garbage
 		tx.message.sanitize()?;

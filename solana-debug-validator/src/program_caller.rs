@@ -22,7 +22,9 @@ enum ProgramCallerExecStatus {
 	}
 }
 
+/// Each solana program invoke is tied with a nonce so that nested CPIs can be properly handeled 
 static COMM_NONCE: AtomicU64 = AtomicU64::new(0);
+/// Handles all requests to and from the debuggable programs
 #[derive(Debug)]
 pub struct ProgramCaller {
 	native_programs: HashMap<Pubkey, Box<dyn NativeProgramStub>>,
@@ -36,6 +38,7 @@ pub struct ProgramCaller {
 }
 
 impl ProgramCaller {
+	/// Consumes the UnixListener for debuggable program communications
 	pub fn new(
 		listener: UnixListener,
 	) -> Self {
@@ -124,9 +127,7 @@ impl ProgramCaller {
 					exec_notif_sender.send_modify(|val| {
 						(*val, _) = val.overflowing_add(1)
 					})
-				}// else{
-				// 	sleep(Duration::from_millis(100)).await;
-				// }
+				}
 			}
 			Ok(())
 		});
@@ -148,12 +149,16 @@ impl ProgramCaller {
 			exec_notif
 		}
 	}
+
+	/// Whether or not the program caller is able to call the program
 	pub async fn has_program_id(
 		&self,
 		program_id: &Pubkey
 	) -> bool {
 		self.native_programs.contains_key(program_id) || self.comms.lock().await.contains_key(program_id)
 	}
+
+	/// Wait until the specified execution ID (nonce) gets a response from the debuggable program
 	async fn wait_for_exec_status(
 		&mut self,
 		nonce: u64
@@ -174,6 +179,9 @@ impl ProgramCaller {
 				.map_err(|_|{BokkenError::ProgramClosedConnection})?;
 		}
 	}
+	/// Calls the specified program (emulated or debuggable)
+	/// 
+	/// Returns Exist status, logs, edited state
 	#[async_recursion]
 	pub async fn call_program(
 		&mut self,
@@ -272,9 +280,11 @@ impl ProgramCaller {
 			}
 		}
 	}
+	/// Stops reading all connections and drops the unix listener
 	pub fn stop(&self) {
 		self.should_stop.store(true, Ordering::Relaxed);
 	}
+	/// Waits until all connections have been dropped
 	pub async fn wait_until_stopped(self) -> eyre::Result<()> {
 		self.recieve_handle.await??;
 		self.listener_handle.await??;
