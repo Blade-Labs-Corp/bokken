@@ -1,15 +1,6 @@
-# Bokken
+# Bokken: A Solana program debugging tool
 
-_A Solana program debugging tool_
-
-* Ever wanted to add a breakpoint in your Solana program...
-  * ...while having persistent state
-  * ...and while calling it from JSONRPC
-  * ...without modifying your program source?
-* Do you want line numbers and stack traces in your errors?
-* Does small a part of you die every time you re-deploy your program just because you didn't add enough `msg!` statements?
-
-Well, with the magic of not compiling to SBF (Solana Bytecode Format), your Solana program debugging woes can be washed away!
+_Finally, a way to actually stepping through your solana code with persistant state! Amazing!_
 
 ![A GIF showing a solana program being step-debugged with with a hilight on struct inspection](https://cdn.discordapp.com/attachments/898958435410915348/1067119876994519040/solana-step-debug-absent-theme.gif)
 
@@ -42,6 +33,16 @@ This project is still in early development. Because of this, not all Solana feat
   * Importing state from pre-existing snapshots created with `solana-ledger-tool` (Mainnet-beta, pre-existing `solana-test-validator` ledgers, etc.)
   * Invoking pre-compiled SBF programs
   * Staking rewards emulation
+
+## How it works
+
+At the time of writing, the only tool available for local solana program development is the `solana-test-validator`. However, there are 2 major limitations.
+* It doesn't provide any mechanism for stepping through transactions (like ethereum's remix IDE for example)
+* You cannot have stack traces, attempting to capture one will just output the string `<unsupported>`
+
+In order to avoid these issues, the basic premise behind Bokken is to compile your Solana program to your system's native platform. This enables the use of capturing stack traces as well as the ability to use pre-existing Rust debugging tools, such as the VSCode CodeLLDB extension.
+
+This, combined with the `solana_program` crate's ability to specify custom solana-sycall implementations when not compiled to SBF/BPF, allows you to debug your programs in an enviroment which can closesly resemble that during normal program execution.
 
 ## Usage
 
