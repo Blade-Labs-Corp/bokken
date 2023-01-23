@@ -1,10 +1,10 @@
 
-use std::{sync::{atomic::{AtomicU64, AtomicBool, Ordering}, Arc}, collections::HashMap, time::Duration};
+use std::{sync::{atomic::{AtomicU64, AtomicBool, Ordering}, Arc}, collections::HashMap};
 use async_recursion::async_recursion;
 use color_eyre::eyre;
 use bokken_runtime::{ipc_comm::IPCComm, debug_env::{BokkenValidatorMessage, BokkenRuntimeMessage, BokkenAccountData, BorshAccountMeta}};
 use solana_sdk::{pubkey::Pubkey, transaction::TransactionError, system_program, program_error::ProgramError};
-use tokio::{net::UnixListener, task, sync::{Mutex, watch}, time::sleep};
+use tokio::{net::UnixListener, task, sync::{Mutex, watch}};
 
 use crate::{error::BokkenError, native_program_stubs::{NativeProgramStub, system_program::BokkenSystemProgram}};
 #[derive(Debug)]
@@ -57,7 +57,7 @@ impl ProgramCaller {
 						println!("Registered new debuggable program: {}", program_id);
 						comms.insert(program_id, comm);
 					}
-					Err(e) => { /* connection failed */ }
+					Err(_e) => { /* connection failed */ }
 				}
 			}
 			Ok(())

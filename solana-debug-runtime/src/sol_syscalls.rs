@@ -1,4 +1,4 @@
-use std::{sync::{Arc, atomic::{AtomicBool, Ordering}}, collections::{HashSet, HashMap}, thread};
+use std::{sync::{Arc}, collections::{HashSet, HashMap}};
 
 use solana_program::{program_stubs::SyscallStubs, program_error::{UNSUPPORTED_SYSVAR, ProgramError}, entrypoint::ProgramResult, pubkey::Pubkey, instruction::Instruction, account_info::AccountInfo};
 use tokio::{sync::{Mutex, mpsc, RwLock}, task};

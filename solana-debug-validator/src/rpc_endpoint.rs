@@ -8,9 +8,9 @@ use solana_sdk::pubkey::Pubkey;
 use solana_sdk::sanitize::Sanitize;
 use solana_sdk::transaction::{Transaction, TransactionError};
 use tokio::sync::Mutex;
-use std::collections::HashMap;
+
 use std::net::SocketAddr;
-use std::rc::Rc;
+
 use std::str::FromStr;
 use std::sync::Arc;
 use jsonrpsee::server::logger::{HttpRequest, MethodKind, TransportProtocol, Logger};
@@ -18,7 +18,7 @@ use jsonrpsee::types::Params;
 
 use crate::debug_ledger::{BokkenLedger, BokkenLedgerInstruction, BokkenLedgerAccountReturnChoice};
 use crate::error::BokkenError;
-use crate::program_caller::ProgramCaller;
+
 use crate::rpc_endpoint_structs::{RpcGetLatestBlockhashRequest, RpcVersionResponse, RpcGetLatestBlockhashResponse, RpcGetLatestBlockhashResponseValue, RpcResponseContext, RpcSimulateTransactionRequest, RpcSimulateTransactionResponse, RpcBinaryEncoding, RpcSimulateTransactionResponseValue, RpcSimulateTransactionResponseAccounts, RPCBinaryEncodedString, RpcGetAccountInfoRequest, RpcGetAccountInfoResponse, RpcGetBalanceResponse, RpcGetBalanceRequest, RpcGetAccountInfoResponseValue, RpcGenericConfigRequest, RpcSendTransactionRequest};
 
 
@@ -79,7 +79,7 @@ impl SolanaDebuggerRpcImpl {
 	}
 	async fn _get_balance(&self, pubkey: String, config: Option<RpcGetBalanceRequest>) -> Result<RpcGetBalanceResponse, BokkenError> {
 		let pubkey = Pubkey::from_str(&pubkey)?;
-		let config = config.unwrap_or_default();
+		let _config = config.unwrap_or_default();
 		let ledger = self.ledger.lock().await;
 		Ok(
 			RpcGetBalanceResponse {
@@ -279,7 +279,7 @@ impl SolanaDebuggerRpcServer for SolanaDebuggerRpcImpl {
 	async fn get_balance(&self, pubkey: String, config: Option<RpcGetBalanceRequest>) -> RpcResult<RpcGetBalanceResponse> {
 		Ok(self._get_balance(pubkey, config).await?)
 	}
-	async fn get_min_balance_for_rent_exemption(&self, size: u64, config: Option<RpcGenericConfigRequest>) -> RpcResult<u64> {
+	async fn get_min_balance_for_rent_exemption(&self, size: u64, _config: Option<RpcGenericConfigRequest>) -> RpcResult<u64> {
 		Ok(self.ledger.lock().await.calc_min_balance_for_rent_exemption(size))
 	}
 	async fn get_latest_blockhash(&self, _config: Option<RpcGetLatestBlockhashRequest>) -> RpcResult<RpcGetLatestBlockhashResponse> {
