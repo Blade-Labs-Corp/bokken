@@ -28,23 +28,29 @@ use crate::debug_ledger::BokkenLedger;
 /// A barebones emulated solana enviroment for quick e2e testing
 struct CommandOptions {
 	/// Where the unix socket will be. Used to connect to debuggable programs.
-	#[bpaf(short, long, argument::<PathBuf>("PATH"), fallback(PathBuf::from("solana-debug-validator.sock")))]
+	/// (Default: solana-debug-validator.sock)
+	#[bpaf(short, long, argument::<PathBuf>("PATH"), fallback(PathBuf::from("bokken.sock")))]
 	socket_path: PathBuf,
 
-   	/// Where the unix socket will be. Used to connect to debuggable programs.
-	#[bpaf(short, long, argument::<PathBuf>("PATH"), fallback(PathBuf::from("not-ledeger")))]
+   	/// Where to save the state of the Bokken ledger
+	/// (Default: not-ledger)
+	#[bpaf(short('S'), long, argument::<PathBuf>("PATH"), fallback(PathBuf::from("not-ledger")))]
 	save_path: PathBuf,
 
-	#[bpaf(short, long, argument::<IpAddr>("IP ADDRESS"), fallback(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))))]
+	/// JSON-RPC IP address to listen to
+	/// (Default: 127.0.0.1)
+	#[bpaf(short('a'), long, argument::<IpAddr>("IP ADDRESS"), fallback(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))))]
 	listen_addr: IpAddr,
 
-	#[bpaf(short, long, argument::<u16>("PORT"), fallback(8899))]
+	/// JSON-RPC IP port to listen to
+	/// (Default: 8899)
+	#[bpaf(short('p'), long, argument::<u16>("PORT"), fallback(8899))]
 	listen_port: u16
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-	println!("Hello, world!");
+	println!("Is your program Bokken today?");
 	color_eyre::install()?;
 
 	let opts = command_options().run();

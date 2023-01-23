@@ -45,7 +45,7 @@
 			},
 			"args": [
 				"--socket-path",
-				"/tmp/sdv.sock",
+				"/tmp/bokken.sock",
 				"--program-id",
 				"TheDebugab1eProgram111111111111111111111111"
 			],

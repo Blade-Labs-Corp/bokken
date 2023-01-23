@@ -18,10 +18,10 @@ pub mod ipc_comm;
 
 #[derive(Clone, Debug, Bpaf)]
 #[bpaf(options, version)]
-/// A barebones emulated solana enviroment for quick e2e testing
+/// A native-compiled Solana program to be used with Bokken
 struct CommandOptions {
-	/// The unix socket created by the debug validator
-	#[bpaf(short, long, argument::<PathBuf>("PATH"), fallback(PathBuf::from("solana-debug-validator.sock")))]
+	/// The unix socket of the Bokken instance to link to
+	#[bpaf(short, long, argument::<PathBuf>("PATH"))]
 	socket_path: PathBuf,
 
    	/// Program ID of this program
