@@ -6,6 +6,7 @@ _A Solana program debugging tool_
   * ...while having persistent state
   * ...and while calling it from JSONRPC
   * ...without modifying your program source?
+* Do you want line numbers and stack traces in your errors?
 * Does small a part of you die every time you re-deploy your program just because you didn't add enough `msg!` statements?
 
 Well, with the magic of not compiling to SBF (Solana Bytecode Format), your Solana program debugging woes can be washed away!
