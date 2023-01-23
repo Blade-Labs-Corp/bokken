@@ -1,7 +1,5 @@
 # Bokken: A Solana program debugging tool
 
-_Finally, a way to actually stepping through your solana code with persistant state! Amazing!_
-
 ![A GIF showing a solana program being step-debugged with with a hilight on struct inspection](https://cdn.discordapp.com/attachments/898958435410915348/1067119876994519040/solana-step-debug-absent-theme.gif)
 
 ## Preamble
