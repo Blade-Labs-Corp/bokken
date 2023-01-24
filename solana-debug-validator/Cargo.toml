@@ -2,6 +2,8 @@
 name = "bokken"
 version = "0.1.0"
 edition = "2021"
+license = "GPL-3.0"
+description = "Training your solana programs in a controlled enviroment"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -11,7 +13,7 @@ tokio = { version = "1.0", features = ["full"] }
 thiserror = "1.0"
 num-traits = "0.2"
 solana-sdk = "~1.13"
-bokken-runtime = { path = "../solana-debug-runtime" }
+bokken-runtime = "0.1"
 bytemuck = "1.9"
 bpaf = { version = "0.7", features = ["derive"] }
 color-eyre = "0.5"
