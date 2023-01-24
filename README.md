@@ -34,11 +34,11 @@ This project is still in early development. Because of this, not all Solana feat
 
 ## How it works
 
-At the time of writing, the only tool available for local solana program development is the `solana-test-validator`. However, there are 2 major limitations.
-* It doesn't provide any mechanism for stepping through transactions (like ethereum's remix IDE for example)
-* You cannot have stack traces, attempting to capture one will just output the string `<unsupported>`
+Bokku aims to provide the following debugging features to solana program developers
+* The ability to step through transaction instructions (like ethereum's remix IDE for example)
+* The ability to capture stack traces, as attempting to capture one will currently just output the string `<unsupported>`
 
-In order to avoid these issues, the basic premise behind Bokken is to compile your Solana program to your system's native platform. This enables the use of capturing stack traces as well as the ability to use pre-existing Rust debugging tools, such as the VSCode CodeLLDB extension.
+In order to achieve this, the basic premise behind Bokken is to compile your Solana program to your system's native platform. This enables the use of capturing stack traces as well as the ability to use pre-existing Rust debugging tools, such as the VSCode CodeLLDB extension.
 
 This, combined with the `solana_program` crate's ability to specify custom solana-sycall implementations when not compiled to SBF/BPF, allows you to debug your programs in an enviroment which can closesly resemble that during normal program execution.
 
