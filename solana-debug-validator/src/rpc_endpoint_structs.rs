@@ -1,3 +1,5 @@
+use serde_with::{serde_as, DefaultOnNull};
+
 use crate::error::BokkenError;
 
 
@@ -96,15 +98,19 @@ pub struct RpcGenericConfigRequest {
 // end-common
 
 // start-getAccountInfo
+#[serde_as]
 #[derive(serde::Serialize, serde::Deserialize, Default, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcGetAccountInfoRequest {
 	#[serde(default)]
+	#[serde_as(deserialize_as = "DefaultOnNull")]
 	pub commitment: RpcCommitment,
 	#[serde(default)]
+	#[serde_as(deserialize_as = "DefaultOnNull")]
 	pub encoding: RpcBinaryEncoding,
 	pub data_slice: Option<RpcDataSlice>,
 	#[serde(default)]
+	#[serde_as(deserialize_as  = "DefaultOnNull")]
 	pub min_context_slot: u64
 }
 
@@ -127,15 +133,19 @@ pub struct RpcGetAccountInfoResponseValue {
 // end-getAccountInfo
 
 // start-getBalance
+#[serde_as]
 #[derive(serde::Serialize, serde::Deserialize, Default, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcGetBalanceRequest {
 	#[serde(default)]
+	#[serde_as(deserialize_as = "DefaultOnNull")]
 	pub commitment: RpcCommitment,
 	#[serde(default)]
+	#[serde_as(deserialize_as = "DefaultOnNull")]
 	pub min_context_slot: u64
 }
 
+#[serde_as]
 #[derive(serde::Serialize, serde::Deserialize, Default, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcGetBalanceResponse {
@@ -177,36 +187,47 @@ pub struct RpcGetLatestBlockhashResponseValue {
 // end-getLatestBlockHash
 
 // start-sendTransaction
+#[serde_as]
 #[derive(serde::Serialize, serde::Deserialize, Default, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcSendTransactionRequest {
 	#[serde(default)]
+	#[serde_as(deserialize_as = "DefaultOnNull")]
 	pub skip_verify: bool,
 	#[serde(default)]
+	#[serde_as(deserialize_as = "DefaultOnNull")]
 	pub pre_flight_commitment: RpcCommitment,
 	pub encoding: Option<RpcBinaryEncoding>,
 	#[serde(default)]
+	#[serde_as(deserialize_as = "DefaultOnNull")]
 	pub min_context_slot: u64
 }
 //end-sendTransaction
 
 
 // start-simulateTransaction
+#[serde_as]
 #[derive(serde::Serialize, serde::Deserialize, Default, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcSimulateTransactionRequest {
 	#[serde(default)]
+	#[serde_as(deserialize_as = "DefaultOnNull")]
 	pub sig_verify: bool,
 	#[serde(default)]
+	#[serde_as(deserialize_as = "DefaultOnNull")]
 	pub commitment: RpcCommitment,
 	pub encoding: Option<RpcBinaryEncoding>,
 	#[serde(default)]
+	#[serde_as(deserialize_as = "DefaultOnNull")]
 	pub replace_recent_blockhash: bool,
 	#[serde(default)]
+	#[serde_as(deserialize_as = "DefaultOnNull")]
 	pub accounts: RpcSimulateTransactionRequestAccounts,
 	#[serde(default)]
+	#[serde_as(deserialize_as = "DefaultOnNull")]
 	pub min_context_slot: u64
 }
+#[serde_as]
 #[derive(serde::Serialize, serde::Deserialize, Default, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcSimulateTransactionRequestAccounts {

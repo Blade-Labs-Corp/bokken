@@ -62,7 +62,7 @@ impl SolanaDebuggerRpcImpl {
 			RpcGetAccountInfoResponse {
 				context: RpcResponseContext { slot: ledger.slot() },
 				value: if data.lamports == 0 {
-					/// BokkenLedger returns fake data if the account doesn't exist, but we'll just return none here
+					// BokkenLedger returns fake data if the account doesn't exist, so we'll just return none here
 					None
 				}else{
 					Some(

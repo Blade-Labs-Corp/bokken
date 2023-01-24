@@ -1,6 +1,6 @@
 [package]
 name = "bokken"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "GPL-3.0"
 description = "Training your solana programs in a controlled enviroment"
@@ -20,6 +20,7 @@ color-eyre = "0.5"
 jsonrpsee = { version = "0.16", features = ["server", "macros"] }
 async-trait = "0.1"
 serde = "1.0"
+serde_with = "2.2"
 bs58 = "0.4"
 base64 = "0.13"
 bincode = "1.3"
