@@ -145,6 +145,16 @@ impl<
 		
 		Ok(IndexableFileSearchResult::NotFound(left))
 	}
+	pub async fn first(&self) -> Result<Option<(I, T)>, BokkenDetailedError> {
+		if self.len() == 0 {
+			return Ok(None);
+		}
+		let file_ref = &mut self.file_ref.lock().await;
+		Ok(Some((
+			self._read_identifier_at_index(0, file_ref).await?,
+			self._read_entry_at_index(0, file_ref).await?
+		)))
+	}
 	pub async fn last(&self) -> Result<Option<(I, T)>, BokkenDetailedError> {
 		let mut index = self.len();
 		if index == 0 {
