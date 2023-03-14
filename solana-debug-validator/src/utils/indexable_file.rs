@@ -11,13 +11,13 @@ use crate::error::{BokkenDetailedError, BokkenError};
 /// Ensures that the data cannot be edited while it is being written.
 /// Functions like a sorted map, duplicate keys will be overwritten
 struct IndexableFile<
+	const HEADER_SIZE: usize,
 	const IDENTIFIER_SIZE: usize,
 	I: Ord + BorshDeserialize + BorshSerialize,
 	T: BorshDeserialize + BorshSerialize
 > {
 	file_ref: Mutex<fs::File>,
 	file_len: u64,
-	begin_offset: usize,
 	identifier_type: PhantomData<I>,
 	entry_size: usize,
 	entry_type: PhantomData<T>,
@@ -25,13 +25,13 @@ struct IndexableFile<
 	
 }
 impl<
+	const HEADER_SIZE: usize,
 	const IDENTIFIER_SIZE: usize,
 	I: Ord + BorshDeserialize + BorshSerialize,
 	T: BorshDeserialize + BorshSerialize
-> IndexableFile<IDENTIFIER_SIZE, I, T> {
+> IndexableFile<HEADER_SIZE, IDENTIFIER_SIZE, I, T> {
 	async fn new(
 		path: impl AsRef<Path>,
-		begin_offset: usize,
 		entry_size: usize,
 		indentifier_is_seperate_from_entry: bool
 	) -> Result<Self, BokkenDetailedError> {
@@ -46,7 +46,6 @@ impl<
 			Self {
 				file_ref: Mutex::new(file_ref),
 				file_len: file_metadata.len(),
-				begin_offset,
 				identifier_type: PhantomData,
 				entry_size,
 				entry_type: PhantomData,
@@ -54,8 +53,28 @@ impl<
 			}
 		)
 	}
+	pub async fn read_file_header(&self) -> Result<Option<[u8; HEADER_SIZE]>, BokkenDetailedError> {
+		let file_ref = &mut self.file_ref.lock().await;
+		let mut header_bytes = [0u8; HEADER_SIZE];
+		file_ref.seek(SeekFrom::Start(0)).await?;
+		let data_read = file_ref.read(&mut header_bytes).await?;
+		if data_read < HEADER_SIZE {
+			return Ok(None);
+		}
+		Ok(Some(header_bytes))
+	}
+	pub async fn write_file_header(&mut self, header_bytes: [u8; HEADER_SIZE]) -> Result<(), BokkenDetailedError> {
+		let file_ref = &mut self.file_ref.lock().await;
+		file_ref.seek(SeekFrom::Start(0)).await?;
+		if self.file_len < HEADER_SIZE as u64 {
+			file_ref.set_len(HEADER_SIZE as u64).await?;
+			self.file_len = HEADER_SIZE as u64;
+		}
+		file_ref.write(header_bytes.as_slice()).await?;
+		Ok(())
+	}
 	fn _index_to_offset(&self, index: usize) -> u64 {
-		self.begin_offset as u64 +
+		HEADER_SIZE as u64 +
 			index as u64 *
 			(
 				IDENTIFIER_SIZE as u64 *
@@ -64,8 +83,11 @@ impl<
 			)
 	}
 	pub fn len(&self) -> usize {
+		if self.file_len == 0 {
+			return 0;
+		}
 		let result = (
-			self.file_len - self.begin_offset as u64
+			self.file_len - HEADER_SIZE as u64
 		) / (
 			IDENTIFIER_SIZE as u64 *
 			self.indentifier_is_seperate_from_entry as u64 +
