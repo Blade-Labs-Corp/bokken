@@ -1,6 +1,6 @@
 [package]
 name = "bokken-runtime"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "GPL-3.0"
 description = "Dependencies for compiling solana program under the Bokken enviroment"
@@ -12,7 +12,7 @@ borsh = {version = "0.9", features = ["const-generics"]}
 tokio = { version = "1", features = ["full"] }
 thiserror = "1.0"
 num-traits = "0.2"
-solana-program = "1.13"
+solana-program = "1.14"
 bytemuck = "1.9"
 lazy_static = "1.4.0"
 bpaf = { version = "0.7", features = ["derive"] }
