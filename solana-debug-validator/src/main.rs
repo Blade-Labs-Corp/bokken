@@ -15,6 +15,7 @@ use bpaf::Bpaf;
 
 
 mod error;
+mod utils;
 mod debug_ledger;
 mod rpc_endpoint_structs;
 mod rpc_endpoint;
