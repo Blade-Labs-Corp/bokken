@@ -8,5 +8,5 @@ edition = "2021"
 [dependencies]
 borsh = {version = "0.9", features = ["const-generics"]}
 num-traits = "0.2"
-solana-program = "~1.13"
+solana-program = "~1.14"
 bytemuck = "1.9"

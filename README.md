@@ -24,10 +24,14 @@ This project is still in early development. Because of this, not all Solana feat
   * `getBlockHeight`
   * `getLatestBlockhash` (With fake data)
   * `sendTransaction`
+  * `signatureSubscribe`
+  * `getSignatureStatuses`
+  * Partial sysvar support
+    * clock (partial, slot number and unix time only)
+    * Rent
 * Pending features
-  * Anything req'd for `sendAndConfirmTransaction`
-  * Lookups for "Transactions/Slots"
-  * Sysvars
+  * Actual time-keeping, simulating consistent slot generation
+  * Remaining sysvars
   * Importing state from pre-existing snapshots created with `solana-ledger-tool` (Mainnet-beta, pre-existing `solana-test-validator` ledgers, etc.)
   * Invoking pre-compiled SBF programs
   * Staking rewards emulation

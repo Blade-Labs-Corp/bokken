@@ -42,7 +42,8 @@ impl AccountInfoHeader {
 #[derive(Debug)]
 pub(crate) struct SolanaAccountsBlob {
 	pub account_offsets: HashMap<Pubkey, usize>,
-	pub bytes: Vec<u8>
+	pub bytes: Vec<u8>,
+	pub non_entrypointed_account_infos: HashMap<Pubkey, BokkenAccountData>
 }
 impl SolanaAccountsBlob {
 	/// Creates a new instance of solana account data with the information provided
@@ -59,7 +60,8 @@ impl SolanaAccountsBlob {
 			size_of::<Pubkey>()
 		);
 		blob.extend((account_metas.len() as u64).to_le_bytes());
-
+		// println!("SolanaAccountsBlob: account_datas: {:#?}", account_datas.keys().map(|k|{*k}).collect::<Vec<Pubkey>>());
+		// println!("SolanaAccountsBlob: account_metas: {:#?}", account_metas);
 		let mut account_indices: HashMap<Pubkey, usize> = HashMap::new();
 		let mut account_offsets: HashMap<Pubkey, usize> = HashMap::new();
 		for (index, account_meta) in account_metas.iter().enumerate() {
@@ -91,7 +93,8 @@ impl SolanaAccountsBlob {
 		blob.extend(program_id.as_ref());
 		Self {
 			bytes: blob,
-			account_offsets
+			account_offsets,
+			non_entrypointed_account_infos: account_datas
 		}
 	}
 
@@ -120,6 +123,11 @@ impl SolanaAccountsBlob {
 		}else{
 			None
 		}
+	}
+	pub fn get_sysvar_data(&self, pubkey: &Pubkey) -> Option<BokkenAccountData> {
+		self.non_entrypointed_account_infos.get(pubkey).cloned().or(
+			self.get_account_data(pubkey)
+		)
 	}
 
 	/// Edits the account data accessible by the solana program with the data provided

@@ -1,5 +1,5 @@
 import {inspect} from "util";
-import {Connection, PublicKey, Keypair, Transaction, SystemProgram, TransactionInstruction} from "@solana/web3.js";
+import {Connection, PublicKey, Keypair, Transaction, SystemProgram, TransactionInstruction, sendAndConfirmTransaction} from "@solana/web3.js";
 import { sizeOf, decode } from "./autogen/serialization";
 import {TestProgramInstructionBuilder} from "./autogen/instructions";
 
@@ -99,6 +99,7 @@ async function printStateAccountInfo(connection: Connection, programState: Publi
 		);
 		await printAccountInfo(connection, testKeypair.publicKey);
 		await printStateAccountInfo(connection, programState);
+		//*/
 		console.log("-- inc number --");
 		await printSimulatedIxThenSend(
 			connection,
@@ -107,14 +108,36 @@ async function printStateAccountInfo(connection: Connection, programState: Publi
 		);
 		await printAccountInfo(connection, testKeypair.publicKey);
 		await printStateAccountInfo(connection, programState);
-		console.log("-- inc number again --");
-		await printSimulatedIxThenSend(
-			connection,
-			TestProgramInstructionBuilder.buildIncrementNumberIx(programId, programState, 1337n),
-			[testKeypair]
+		console.log(
+			"s&c tx:",
+			await sendAndConfirmTransaction(
+				connection,
+				new Transaction().add(TestProgramInstructionBuilder.buildRecurseThenIncrementNumberIx(
+					programId,
+					programState,
+					2,
+					500n
+				)),
+				[testKeypair]
+			)
 		);
 		await printAccountInfo(connection, testKeypair.publicKey);
 		await printStateAccountInfo(connection, programState);
+		/*
+		console.log("-- inc number again, in a loop --");
+		
+		while(true){
+			console.log(
+				"s&c tx:",
+				await sendAndConfirmTransaction(
+					connection,
+					new Transaction().add(TestProgramInstructionBuilder.buildIncrementNumberIx(programId, programState, 9001n)),
+					[testKeypair]
+				)
+			);
+			await printStateAccountInfo(connection, programState);
+		}
+		*/
 	}catch(ex: any) {
 		if (Array.isArray(ex.logs)) {
 			console.error(ex.name, ex.message);

@@ -1,4 +1,5 @@
 use serde_with::{serde_as, DefaultOnNull};
+use solana_sdk::transaction::TransactionError;
 
 use crate::error::BokkenError;
 
@@ -269,3 +270,50 @@ pub struct RpcSimulateTransactionResponseReturnData {
 	pub data: RPCBinaryEncodedString
 }
 // end-simulateTransaction
+
+
+// start-signatureSubscribe
+#[derive(serde::Serialize, serde::Deserialize, Default, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct RpcSignatureSubscribeResponse {
+	pub context: RpcResponseContext,
+	pub value: RpcSignatureSubscribeResponseValue
+}
+#[derive(serde::Serialize, serde::Deserialize, Default, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct RpcSignatureSubscribeResponseValue {
+	pub err: Option<TransactionError>
+}
+// start-signatureSubscribe
+
+
+
+// start-getSignatureStatusesRequest
+#[serde_as]
+#[derive(serde::Serialize, serde::Deserialize, Default, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct RpcGetSignatureStatusesRequest {
+	#[serde(default)]
+	#[serde_as(deserialize_as = "DefaultOnNull")]
+	pub search_transaction_history: bool
+}
+
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct RpcGetSignatureStatusesResponse {
+	pub context: RpcResponseContext,
+	pub value: Vec<Option<RpcGetSignatureStatusesResponseValue>>
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct RpcGetSignatureStatusesResponseValue {
+	pub slot: u64,
+	pub confirmations: Option<usize>,
+	pub confirmation_status: RpcCommitment,
+	pub err: Option<solana_sdk::transaction::TransactionError>,
+	pub status: Option<solana_sdk::transaction::TransactionError>,
+}
+
+// end-getSignatureStatusesRequest

@@ -1,6 +1,6 @@
 use std::{sync::{Arc}, collections::{HashSet, HashMap}};
 
-use solana_program::{program_stubs::SyscallStubs, program_error::{UNSUPPORTED_SYSVAR, ProgramError}, entrypoint::ProgramResult, pubkey::Pubkey, instruction::Instruction, account_info::AccountInfo};
+use solana_program::{program_stubs::SyscallStubs, program_error::{UNSUPPORTED_SYSVAR, ProgramError}, entrypoint::ProgramResult, pubkey::Pubkey, instruction::Instruction, account_info::AccountInfo, sysvar};
 use tokio::{sync::{Mutex, mpsc, RwLock}, task};
 use itertools::Itertools;
 
@@ -52,6 +52,7 @@ impl BokkenSyscalls {
 						let blob = ctx.blob.clone();
 						let nonce = ctx.nonce();
 						contexts_clone.lock().await.push(ctx);
+						println!("Program execution start");
 						execute_sol_program_thread(nonce, blob, ipc_clone.clone(), msg_sender_clone).await;
 					},
 					BokkenSyscallMsg::PopContext => {
@@ -160,13 +161,29 @@ impl SyscallStubs for BokkenSyscalls {
 			// self.invoke_result_senders unlocks
 		};
 		{
+			let mut account_datas_for_ipc = HashMap::new();
+			{
+				let ctx_acocunt_datas = ctx_account_data_lock.blocking_write();
+				for acc_meta in instruction.accounts.iter() {
+					account_datas_for_ipc.insert(acc_meta.pubkey.clone(), ctx_acocunt_datas.get_account_data(&acc_meta.pubkey).ok_or(ProgramError::NotEnoughAccountKeys)?);
+				}
+				account_datas_for_ipc.insert(
+					sysvar::rent::id(),
+					ctx_acocunt_datas.get_sysvar_data(&sysvar::rent::id()).ok_or(ProgramError::NotEnoughAccountKeys)?
+				);
+				account_datas_for_ipc.insert(
+					sysvar::clock::id(),
+					ctx_acocunt_datas.get_sysvar_data(&sysvar::clock::id()).ok_or(ProgramError::NotEnoughAccountKeys)?
+				);
+				// ctx_acocunt_datas drops and unlocks
+			}
 			self.ipc.blocking_lock().blocking_send_msg(
 				BokkenRuntimeMessage::CrossProgramInvoke {
 					nonce: self.nonce(),
 					program_id: self.program_id,
 					instruction: instruction.data.clone(),
 					account_metas: instruction.accounts.iter().map(|v|{v.into()}).collect(),
-					account_datas: HashMap::new(),
+					account_datas: account_datas_for_ipc,
 					call_depth: self.stack_height()
 				}
 			).expect("encoding to not fail");
@@ -187,16 +204,49 @@ impl SyscallStubs for BokkenSyscalls {
 		}
 		Ok(())
 	}
-	fn sol_get_clock_sysvar(&self, _var_addr: *mut u8) -> u64 {
+	fn sol_get_clock_sysvar(&self, var_addr: *mut u8) -> u64 {
+		let ctx_account_data_lock = self.account_data_lock();
+		let ctx_acocunt_datas = ctx_account_data_lock.blocking_read();
+		let account_data = ctx_acocunt_datas.get_sysvar_data(&sysvar::clock::id());
+		if let Some(account_data) = account_data {
+			// We are assuming that the data given by the parent process is valid.
+			// The parent process actually uses bincode, but it should be 1:1 with casting as it's all 64-bit values
+			unsafe {
+				var_addr.copy_from(account_data.data.as_ptr(), account_data.data.len());
+			}
+			return 0;
+		}
 		UNSUPPORTED_SYSVAR
 	}
-	fn sol_get_epoch_schedule_sysvar(&self, _var_addr: *mut u8) -> u64 {
+	fn sol_get_epoch_schedule_sysvar(&self, var_addr: *mut u8) -> u64 {
+		let ctx_account_data_lock = self.account_data_lock();
+		let ctx_acocunt_datas = ctx_account_data_lock.blocking_read();
+		let account_data = ctx_acocunt_datas.get_sysvar_data(&sysvar::epoch_schedule::id());
+		if let Some(account_data) = account_data {
+			// We are assuming that the data given by the parent process is valid.
+			// The parent process actually uses bincode, but it should be 1:1 with casting as it's all 64-bit values
+			unsafe {
+				var_addr.copy_from(account_data.data.as_ptr(), account_data.data.len());
+			}
+			return 0;
+		}
 		UNSUPPORTED_SYSVAR
 	}
 	fn sol_get_fees_sysvar(&self, _var_addr: *mut u8) -> u64 {
 		UNSUPPORTED_SYSVAR
 	}
-	fn sol_get_rent_sysvar(&self, _var_addr: *mut u8) -> u64 {
+	fn sol_get_rent_sysvar(&self, var_addr: *mut u8) -> u64 {
+		let ctx_account_data_lock = self.account_data_lock();
+		let ctx_acocunt_datas = ctx_account_data_lock.blocking_read();
+		let account_data = ctx_acocunt_datas.get_sysvar_data(&sysvar::rent::id());
+		if let Some(account_data) = account_data {
+			// We are assuming that the data given by the parent process is valid.
+			// The parent process actually uses bincode, but it should be 1:1 with casting as it's all 64-bit values
+			unsafe {
+				var_addr.copy_from(account_data.data.as_ptr(), account_data.data.len());
+			}
+			return 0;
+		}
 		UNSUPPORTED_SYSVAR
 	}
 	fn sol_get_return_data(&self) -> Option<(Pubkey, Vec<u8>)> {

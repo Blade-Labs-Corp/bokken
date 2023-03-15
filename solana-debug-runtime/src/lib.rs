@@ -57,6 +57,7 @@ async fn ipc_read_loop(
 				account_datas,
 				call_depth
 			} => {
+				println!("Invoke: call_depth: {}", call_depth);
 				let context = BokkenSolanaContext::new(
 					program_id,
 					instruction,

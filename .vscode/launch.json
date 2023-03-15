@@ -11,20 +11,22 @@
 			"cargo": {
 				"args": [
 					"build",
-					"--bin=solana-debug-validator",
-					"--package=solana-debug-validator",
+					"--bin=bokken",
+					"--package=bokken",
 					
 				],
 				"filter": {
-					"name": "solana-debug-validator",
+					"name": "bokken",
 					"kind": "bin"
 				}
 			},
 			"args": [
 				"--socket-path",
-				"/tmp/sdv.sock",
+				"/tmp/bokken.sock",
 				"--save-path",
-				"/tmp/not-ledger"
+				"/tmp/not-ledger",
+				"--initial-mint-pubkey",
+				"2iXtA8oeZqUU5pofxK971TCEvFGfems2AcDRaZHKD2pQ"
 			],
 			"cwd": "${workspaceFolder}"
 		},

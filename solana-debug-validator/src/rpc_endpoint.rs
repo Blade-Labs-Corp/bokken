@@ -1,7 +1,9 @@
 use color_eyre::eyre;
 use jsonrpsee::server::ServerBuilder;
+use jsonrpsee::types::error::CallError;
 use jsonrpsee::{proc_macros::rpc, core::async_trait, core::RpcResult};
 use bokken_runtime::debug_env::BorshAccountMeta;
+use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::instruction::InstructionError;
 use solana_sdk::program_error::ProgramError;
 use solana_sdk::pubkey::Pubkey;
@@ -19,10 +21,8 @@ use jsonrpsee::types::Params;
 use crate::debug_ledger::{BokkenLedger, BokkenLedgerInstruction, BokkenLedgerAccountReturnChoice};
 use crate::error::BokkenError;
 
-use crate::rpc_endpoint_structs::{RpcGetLatestBlockhashRequest, RpcVersionResponse, RpcGetLatestBlockhashResponse, RpcGetLatestBlockhashResponseValue, RpcResponseContext, RpcSimulateTransactionRequest, RpcSimulateTransactionResponse, RpcBinaryEncoding, RpcSimulateTransactionResponseValue, RpcSimulateTransactionResponseAccounts, RPCBinaryEncodedString, RpcGetAccountInfoRequest, RpcGetAccountInfoResponse, RpcGetBalanceResponse, RpcGetBalanceRequest, RpcGetAccountInfoResponseValue, RpcGenericConfigRequest, RpcSendTransactionRequest};
+use crate::rpc_endpoint_structs::{RpcGetLatestBlockhashRequest, RpcVersionResponse, RpcGetLatestBlockhashResponse, RpcGetLatestBlockhashResponseValue, RpcResponseContext, RpcSimulateTransactionRequest, RpcSimulateTransactionResponse, RpcBinaryEncoding, RpcSimulateTransactionResponseValue, RpcSimulateTransactionResponseAccounts, RPCBinaryEncodedString, RpcGetAccountInfoRequest, RpcGetAccountInfoResponse, RpcGetBalanceResponse, RpcGetBalanceRequest, RpcGetAccountInfoResponseValue, RpcGenericConfigRequest, RpcSendTransactionRequest, RpcSignatureSubscribeResponse, RpcSignatureSubscribeResponseValue, RpcGetSignatureStatusesRequest, RpcGetSignatureStatusesResponse, RpcGetSignatureStatusesResponseValue, RpcCommitment};
 
-
-// Generate both server and client implementations, prepend all the methods with `foo_` prefix.
 #[rpc(server)]
 pub trait SolanaDebuggerRpc {
 	#[method(name = "getAccountInfo")]
@@ -35,7 +35,9 @@ pub trait SolanaDebuggerRpc {
 	async fn get_latest_blockhash(&self, config: Option<RpcGetLatestBlockhashRequest>) -> RpcResult<RpcGetLatestBlockhashResponse>;
 	#[method(name = "getMinimumBalanceForRentExemption")]
 	async fn get_min_balance_for_rent_exemption(&self, size: u64, config: Option<RpcGenericConfigRequest>) -> RpcResult<u64>;
-
+	#[method(name = "getSignatureStatuses")]
+	async fn get_signature_statuses(&self, sigs: Vec<String>, config: Option<RpcGetSignatureStatusesRequest>) -> RpcResult<RpcGetSignatureStatusesResponse>;
+	
 	#[method(name = "getVersion")]
 	fn get_version(&self) -> RpcResult<RpcVersionResponse>;
 	#[method(name = "sendTransaction")]
@@ -48,16 +50,42 @@ pub struct SolanaDebuggerRpcImpl {
 	ledger: Arc<Mutex<BokkenLedger>>
 }
 impl SolanaDebuggerRpcImpl {
-	fn new(ledger: BokkenLedger) -> Self {
+	fn new(ledger: Arc<Mutex<BokkenLedger>>) -> Self {
 		Self {
-			ledger: Arc::new(Mutex::new(ledger))
+			ledger
 		}
+	}
+	async fn _get_signature_statuses(&self, sigs: Vec<String>, config: Option<RpcGetSignatureStatusesRequest>) -> Result<RpcGetSignatureStatusesResponse, BokkenError> {
+		let ledger = self.ledger.lock().await;
+		let mut result = Vec::new();
+		for sig in sigs {
+			let sig_bytes: [u8; 64] = bs58::decode(sig).into_vec()?.try_into().map_err(|_|{BokkenError::InvalidSignatureLength})?;
+			if let Some(data) = ledger.get_bokken_entry_by_tx(sig_bytes).await? {
+				result.push(Some(
+					RpcGetSignatureStatusesResponseValue {
+						slot: data.slot,
+						confirmations: None,
+						confirmation_status: RpcCommitment::Finalized,
+						err: data.tx_error.clone(),
+						status: data.tx_error
+					}
+				))
+			}else{
+				result.push(None)
+			}
+		}
+		Ok(
+			RpcGetSignatureStatusesResponse {
+				context: RpcResponseContext { slot: ledger.slot() },
+				value: result
+			}
+		)
 	}
 	async fn _get_account_info(&self, pubkey: String, config: Option<RpcGetAccountInfoRequest>) -> Result<RpcGetAccountInfoResponse, BokkenError> {
 		let pubkey = Pubkey::from_str(&pubkey)?;
 		let config = config.unwrap_or_default();
 		let ledger = self.ledger.lock().await;
-		let data = ledger.read_account(&pubkey).await?;
+		let data = ledger.read_account(&pubkey, None).await?;
 		Ok(
 			RpcGetAccountInfoResponse {
 				context: RpcResponseContext { slot: ledger.slot() },
@@ -85,7 +113,7 @@ impl SolanaDebuggerRpcImpl {
 		Ok(
 			RpcGetBalanceResponse {
 				context: RpcResponseContext { slot: ledger.slot() },
-				value: ledger.read_account(&pubkey).await?.lamports
+				value: ledger.read_account(&pubkey, None).await?.lamports
 			}
 		)
 	}
@@ -104,37 +132,22 @@ impl SolanaDebuggerRpcImpl {
 		tx.sanitize()?;
 		tx.verify()?;
 
-		let account_pubkeys = &tx.message.account_keys;
-
 		let mut ledger = self.ledger.lock().await;
-		let ixs = tx.message.instructions.iter().map(|ix| {
-			// Alright to directly index these since the message was sanitized earlier
-			let program_id = account_pubkeys[ix.program_id_index as usize];
-			// ChatGPT Assistant told me to do it this way
-			let account_metas = ix.accounts.iter().map(|account_index|{
-				// tx.message.header.
-				BorshAccountMeta {
-					pubkey: account_pubkeys[*account_index as usize],
-					is_signer: tx.message.is_signer(*account_index as usize),
-					is_writable: tx.message.is_writable(*account_index as usize)
-				}
-
-			}).collect::<Vec<BorshAccountMeta>>();
-			BokkenLedgerInstruction {
-				program_id,
-				account_metas,
-				data: ix.data.clone()
-			}
-		}).collect();
+		let tx_sig = tx.signatures[0];
+		ledger.execute_transaction(tx, true).await?;
+		
+		/* 
 
 		let _ = ledger.execute_instructions(
 			&tx.message.account_keys[0],
 			ixs,
 			BokkenLedgerAccountReturnChoice::None,
+			None,
 			true
 		).await?;
+		*/
 		// The documented response is to just reply with the tx signature, so we just do that
-		Ok(bs58::encode(tx.signatures[0]).into_string())
+		Ok(bs58::encode(tx_sig).into_string())
 	}
 	async fn _simulate_transaction(
 		&self,
@@ -192,6 +205,7 @@ impl SolanaDebuggerRpcImpl {
 			&tx.message.account_keys[0],
 			ixs,
 			BokkenLedgerAccountReturnChoice::Only(config_account_addresses.clone()),
+			None,
 			false
 		).await {
 			Ok((states, logs)) => {
@@ -218,6 +232,7 @@ impl SolanaDebuggerRpcImpl {
 				)
 			},
 			Err(e) => {
+				let e = BokkenError::from(e);
 				match e {
 					BokkenError::InstructionExecError(index, program_error, logs) => {
 						Ok(
@@ -265,6 +280,9 @@ impl SolanaDebuggerRpcImpl {
 // Note that the trait name we use is `MyRpcServer`, not `MyRpc`!
 #[async_trait]
 impl SolanaDebuggerRpcServer for SolanaDebuggerRpcImpl {
+	async fn get_signature_statuses(&self, sigs: Vec<String>, config: Option<RpcGetSignatureStatusesRequest>) -> RpcResult<RpcGetSignatureStatusesResponse> {
+		Ok(self._get_signature_statuses(sigs, config).await?)
+	}
 	async fn get_account_info(&self, pubkey: String, config: Option<RpcGetAccountInfoRequest>) -> RpcResult<RpcGetAccountInfoResponse> {
 		Ok(self._get_account_info(pubkey, config).await?)
 	}
@@ -345,14 +363,105 @@ pub async fn start_endpoint(
 	addr: SocketAddr,
 	ledger: BokkenLedger
 ) -> eyre::Result<()> {
+	let ledger_mutex = Arc::new(Mutex::new(ledger));
+	// No idea why these are handeled on seperate ports, but whatever.
+	let server2 = ServerBuilder::default().set_logger(MyRpcLogger).build(
+		match &addr {
+			SocketAddr::V4(addr) => {
+				let mut new_addr = addr.clone();
+				new_addr.set_port(addr.port() + 1);
+				SocketAddr::V4(new_addr)
+			},
+			SocketAddr::V6(addr) => {
+				let mut new_addr = addr.clone();
+				new_addr.set_port(addr.port() + 1);
+				SocketAddr::V6(new_addr)
+			},
+		}
+	).await?;
+	let server_handle2 = server2.start(
+		// This is terrible
+		{
+			let mut rpc_thing = SolanaDebuggerRpcImpl::new(
+				ledger_mutex.clone()
+			).into_rpc();
+			rpc_thing.register_subscription("signatureSubscribe", "signatureNotification", "signatureUnsubscribe", |params, mut sink, ctx| {
+				println!("AAAAAAAAAAAAAAA");
+				let sig = match params.parse::<(String, CommitmentConfig)>() {
+					Ok(x) => x,
+					Err(e) => {
+						eprint!("Couldn't parse subscription params: {}", e);
+						sink.reject(e)?;
+						return Ok(());
+					}
+				};
+				
+				let sig = match bs58::decode(sig.0).into_vec() {
+					Ok(x) => {
+						x
+					},
+					Err(e) => {
+						eprint!("Couldn't decode subscription sig: {}", e);
+						sink.reject(CallError::from_std_error(e))?;
+						return Ok(());
+					}
+				};
+				let sig: [u8; 64] = match sig.try_into() {
+					Ok(x) => {
+						x
+					},
+					Err(e) => {
+						eprint!("Couldn't try_into subscription sig");
+						sink.reject(CallError::from_std_error(BokkenError::Unimplemented))?;
+						return Ok(());
+					}
+				};
+				// Sink is accepted on the first `send` call.
+				tokio::task::spawn(async move {
+					loop {
+						let ledger = ctx.ledger.lock().await;
+						if let Ok(Some(data)) = ledger.get_bokken_entry_by_tx(sig).await {
+							match sink.send(&RpcSignatureSubscribeResponse {
+									context: RpcResponseContext {
+										slot: data.slot
+									},
+									value: RpcSignatureSubscribeResponseValue { err: data.tx_error },
+								}) {
+								Ok(_) => {},
+								Err(e) => {
+									eprintln!("Something bad happenned with subscription: {}", e);
+								},
+							}
+							break;
+						}
+						std::thread::sleep(std::time::Duration::from_millis(1000));
+					}
+				});
+				Ok(())
+			})?;
+			/* 
+			rpc_thing.register_subscription(
+				"signatureSubscribe",
+				"signatureNotification",
+				"signatureUnsubscribe",
+				|params, sink, rpc_thing| async move {
+					
+					Ok(())
+				}
+			)?;
+			*/
+			rpc_thing
+		}
+	)?;
+
 	let server = ServerBuilder::default().set_logger(MyRpcLogger).build(addr).await?;
-	//let addr = server.local_addr().unwrap();
 	let server_handle = server.start(
 		SolanaDebuggerRpcImpl::new(
-			ledger
+			ledger_mutex.clone()
 		).into_rpc()
 	)?;
 	server_handle.stopped().await;
+	server_handle2.stopped().await;
 	println!("Server stopped");
 	Ok(())
 }

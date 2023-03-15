@@ -10,7 +10,8 @@ use crate::error::{BokkenDetailedError, BokkenError};
 /// A file you can search through.
 /// Ensures that the data cannot be edited while it is being written.
 /// Functions like a sorted map, duplicate keys will be overwritten
-struct IndexableFile<
+#[derive(Debug)]
+pub struct IndexableFile<
 	const HEADER_SIZE: usize,
 	const IDENTIFIER_SIZE: usize,
 	I: Ord + BorshDeserialize + BorshSerialize,
@@ -30,11 +31,11 @@ impl<
 	I: Ord + BorshDeserialize + BorshSerialize,
 	T: BorshDeserialize + BorshSerialize
 > IndexableFile<HEADER_SIZE, IDENTIFIER_SIZE, I, T> {
-	async fn new(
+	pub async fn new(
 		path: impl AsRef<Path>,
 		entry_size: usize,
 		indentifier_is_seperate_from_entry: bool
-	) -> Result<Self, BokkenDetailedError> {
+	) -> Result<Self, color_eyre::eyre::Error> {
 		let file_ref = fs::OpenOptions::new()
 			.read(true)
 			.write(true)
@@ -57,9 +58,14 @@ impl<
 		let file_ref = &mut self.file_ref.lock().await;
 		let mut header_bytes = [0u8; HEADER_SIZE];
 		file_ref.seek(SeekFrom::Start(0)).await?;
-		let data_read = file_ref.read(&mut header_bytes).await?;
-		if data_read < HEADER_SIZE {
-			return Ok(None);
+		match file_ref.read_exact(&mut header_bytes).await {
+			Ok(_) => {},
+			Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+				return Ok(None)
+			},
+			Err(e) => {
+				return Err(e.into());
+			},
 		}
 		Ok(Some(header_bytes))
 	}
@@ -112,7 +118,7 @@ impl<
 	) -> Result<I, BokkenDetailedError> {
 		file_ref.seek(SeekFrom::Start(self._index_to_offset(index))).await?;
 		let mut identifier_bytes = [0u8; IDENTIFIER_SIZE];
-		let data_read = file_ref.read(&mut identifier_bytes).await?;
+		let data_read = file_ref.read_exact(&mut identifier_bytes).await?;
 		if data_read < IDENTIFIER_SIZE {
 			return Err(BokkenError::UnexpectedEOF.into());
 		}
@@ -126,13 +132,18 @@ impl<
 		index: usize,
 		file_ref: &mut fs::File
 	) -> Result<T, BokkenDetailedError> {
+		println!("DEBUG: _read_entry_at_index({})", index);
+		println!("DEBUG: _read_entry_at_index: self._index_to_offset(index): {}", self._index_to_offset(index));
+		println!("DEBUG: _read_entry_at_index: IDENTIFIER_SIZE as u64 * self.indentifier_is_seperate_from_entry as u64: {}", IDENTIFIER_SIZE as u64 * self.indentifier_is_seperate_from_entry as u64);
 		file_ref.seek(SeekFrom::Start(
 			self._index_to_offset(index) + (
 				IDENTIFIER_SIZE as u64 * self.indentifier_is_seperate_from_entry as u64
 			)
 		)).await?;
 		let mut entry_bytes = vec![0u8; self.entry_size];
-		let data_read = file_ref.read(&mut entry_bytes).await?;
+		let data_read = file_ref.read_exact(&mut entry_bytes).await?;
+		println!("DEBUG: _read_entry_at_index: self.entry_size: {}", self.entry_size);
+		println!("DEBUG: _read_entry_at_index: data_read: {}", data_read);
 		if data_read < self.entry_size {
 			return Err(BokkenError::UnexpectedEOF.into());
 		}
@@ -153,6 +164,7 @@ impl<
 		
 		while left < right {
 			let mid = left + size / 2;
+			println!("DEBUG: mid = {}", mid);
 			let cmp = self._read_identifier_at_index(mid, file_ref).await?.cmp(x);
 
 			if cmp == Less {
@@ -193,6 +205,7 @@ impl<
 		let file_ref = &mut self.file_ref.lock().await;
 		match self._binary_search(key, file_ref).await? {
 			IndexableFileSearchResult::Found(index) => {
+				println!("DEBUG: Get, found index {}", index);
 				Ok(
 					Some(
 						self._read_entry_at_index(index, file_ref).await?
@@ -225,7 +238,7 @@ impl<
 			];
 			for i in (0..old_len).rev() {
 				file_ref.seek(SeekFrom::Start(self._index_to_offset(i))).await?;
-				file_ref.read(&mut tmp_entry_bytes.as_mut_slice()).await?;
+				file_ref.read_exact(&mut tmp_entry_bytes.as_mut_slice()).await?;
 				file_ref.seek(SeekFrom::Start(self._index_to_offset(i + 1))).await?;
 				file_ref.write(&tmp_entry_bytes).await?;
 			}

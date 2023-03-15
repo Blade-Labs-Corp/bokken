@@ -1,6 +1,6 @@
 use std::{slice::Iter, cell::RefMut};
 
-use solana_program::{account_info::{AccountInfo, next_account_info}, pubkey::Pubkey, program_error::ProgramError, msg, program::invoke, instruction::{Instruction, AccountMeta}};
+use solana_program::{account_info::{AccountInfo, next_account_info}, pubkey::Pubkey, program_error::ProgramError, msg, program::invoke, instruction::{Instruction, AccountMeta}, clock::Clock, sysvar::Sysvar};
 use std::backtrace::Backtrace;
 
 use crate::{state::TestProgramState, instruction::TestProgramInstruction};
@@ -21,7 +21,9 @@ pub fn process_increment_number(
 	account_iter: &mut Iter<AccountInfo>,
 	number: u64
 ) -> Result<(), ProgramError> {
+	let clock = Clock::get()?;
 	msg!("Program ID: {}", program_id);
+	msg!("Unix timestamp: {}", clock.unix_timestamp);
 	msg!("number: {}", number);
 	let test_state_account = next_account_info(account_iter)?;
 	let mut test_state = RefMut::map(test_state_account.data.borrow_mut(), |bytes| {
